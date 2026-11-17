@@ -12,13 +12,15 @@ conversation and calls a specialist like a tool. Two ADK behaviours this design 
     session, so `submit_brief` still validates every cited ID against real search rows.
   * A specialist's own events are NOT streamed to the runner. That is why `submit_brief`
     and `add_equity_note` stay on the coordinator: the API's `brief` event keeps working.
+    The specialist's raw tool results ride along in state key `specialist_trace` on the
+    coordinator's function_response event; api/runners.py replays them as `tool` events.
 """
 
 from google.adk.agents import Agent
 from google.adk.tools.agent_tool import AgentTool
 
 from . import config
-from .brief import BRIEF, remember_tool_results
+from .brief import BRIEF, SPECIALIST_TRACE, remember_tool_results
 from .prompts import EQUITY_PROMPT, EVIDENCE_PROMPT, _fill, build_data_analyst_prompt
 from .tools import equity_audit, locate_block, semantic_search, tract_context
 
@@ -79,8 +81,15 @@ def specialist_tools() -> list[AgentTool]:
     return tools
 
 
-def require_brief_before_equity(tool, args: dict, tool_context):
-    """Coordinator before_tool_callback: the equity audit runs only after the brief exists."""
+def coordinator_before_tool(tool, args: dict, tool_context):
+    """Coordinator before_tool_callback.
+
+    - The equity audit runs only after the brief exists.
+    - Before each specialist call, reset SPECIALIST_TRACE so the coordinator's function_response
+      event carries only that call's inner tool results (the API replays them to the panels).
+    """
     if tool.name == EQUITY_AUDITOR and not tool_context.state.get(BRIEF):
         return {"error": "The equity audit runs only after submit_brief succeeds. Submit the brief first."}
+    if tool.name in (EVIDENCE_RESEARCHER, EQUITY_AUDITOR, DATA_ANALYST):
+        tool_context.state[SPECIALIST_TRACE] = []
     return None

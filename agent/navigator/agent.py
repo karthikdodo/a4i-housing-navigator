@@ -148,7 +148,7 @@ def _single_agent() -> Agent:
 
 def _multi_agent() -> Agent:
     """Coordinator + specialists (see specialists.py). Same name, API, and brief contract."""
-    from .specialists import require_brief_before_equity, specialist_tools
+    from .specialists import coordinator_before_tool, specialist_tools
 
     def instruction(_ctx: ReadonlyContext) -> str:
         return build_coordinator_prompt(_today())
@@ -161,7 +161,7 @@ def _multi_agent() -> Agent:
         instruction=instruction,
         # submit_brief / add_equity_note stay here so their responses reach the UI.
         tools=[resolve_date, match_fund, submit_brief, add_equity_note, *specialist_tools()],
-        before_tool_callback=require_brief_before_equity,
+        before_tool_callback=coordinator_before_tool,
         after_tool_callback=remember_tool_results,
     )
 

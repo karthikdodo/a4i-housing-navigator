@@ -22,6 +22,11 @@ SEEN_STATUTES = "seen_statutes"
 LAST = "last_"  # last_match_fund, last_tract_context, last_equity_audit
 BRIEF = "brief"
 AWAITING_ANSWER = "awaiting_answer_in_invocation"  # set when a question must go back to the paralegal
+# Multi-agent mode: raw results of tools a specialist ran during its latest call, as
+# [{"tool", "args", "response"}]. Specialists' events aren't streamed, so the API reads this
+# from the coordinator's function_response event (event.actions.state_delta) to fill the panels.
+SPECIALIST_TRACE = "specialist_trace"
+ROOT_AGENT_NAME = "navigator"
 
 BASE_CANNOT_PROVE = [
     "311 records show conditions on the block, not inside this tenant's unit",
@@ -34,6 +39,9 @@ def remember_tool_results(tool, args: dict, tool_context: ToolContext, tool_resp
     if not isinstance(tool_response, dict) or "error" in tool_response:
         return None
     state = tool_context.state
+    if tool_context.agent_name != ROOT_AGENT_NAME:
+        state[SPECIALIST_TRACE] = list(state.get(SPECIALIST_TRACE) or []) + [
+            {"tool": tool.name, "args": dict(args or {}), "response": tool_response}]
     if tool.name == "resolve_date" and (tool_response.get("ambiguous") or tool_response.get("in_past")):
         # The paralegal must answer before a brief is written; checked in submit_brief.
         state[AWAITING_ANSWER] = tool_context.invocation_id
