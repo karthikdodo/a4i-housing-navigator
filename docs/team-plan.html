@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Housing Navigator Team Plan</title>
+<style>
+  :root {
+    --bg: #fbfaf8; --surface: #ffffff; --text: #1f1e1c; --muted: #6b6862;
+    --border: #e4e1db; --accent: #2f5d8a; --accent-soft: #e7f1fb;
+    --warn-soft: #f9eeda; --code-bg: #f0efec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161614; --surface: #1f1f1c; --text: #ecebe7; --muted: #a19e97;
+      --border: #34332f; --accent: #8db8e3; --accent-soft: #1f2f40;
+      --warn-soft: #3a3020; --code-bg: #2a2a26;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161614; --surface: #1f1f1c; --text: #ecebe7; --muted: #a19e97;
+    --border: #34332f; --accent: #8db8e3; --accent-soft: #1f2f40;
+    --warn-soft: #3a3020; --code-bg: #2a2a26;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 6px; }
+  .byline { color: var(--muted); font-size: .9rem; margin-bottom: 20px; }
+  .lead {
+    background: var(--accent-soft); border-left: 4px solid var(--accent);
+    padding: 14px 18px; border-radius: 6px; margin: 0 0 32px;
+  }
+  h2 { font-size: 1.25rem; margin: 40px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  p { margin: 0 0 12px; }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: .88em; }
+  a { color: var(--accent); }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: .93rem; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { background: var(--code-bg); font-weight: 600; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.name { font-weight: 600; white-space: nowrap; }
+  td.when { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .role { display: block; font-weight: 400; color: var(--muted); font-size: .85rem; }
+  ol.timeline { list-style: none; padding: 0; margin: 0; border-left: 2px solid var(--border); }
+  ol.timeline li { position: relative; padding: 0 0 16px 20px; }
+  ol.timeline li::before {
+    content: ""; position: absolute; left: -7px; top: 6px; width: 12px; height: 12px;
+    border-radius: 50%; background: var(--surface); border: 2px solid var(--accent);
+  }
+  ol.timeline li.key::before { background: var(--accent); }
+  ol.timeline .t { font-weight: 600; font-variant-numeric: tabular-nums; }
+  ul { padding-left: 20px; margin: 0 0 16px; }
+  li { margin-bottom: 6px; }
+  ul.checks { list-style: none; padding-left: 0; }
+  ul.checks li { padding: 10px 14px; background: var(--warn-soft); border-radius: 6px; margin-bottom: 8px; }
+  ul.checks li::before { content: "\2610"; margin-right: 10px; color: var(--muted); }
+  footer { margin-top: 48px; color: var(--muted); font-size: .85rem; }
+  @media (max-width: 600px) {
+    h1 { font-size: 1.5rem; }
+    main { padding-top: 24px; }
+    th, td { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>A4I Housing Navigator: Team Plan</h1>
+  <div class="byline">Agents for Impact 2026 &middot; Nov 17, 2026</div>
+
+  <p class="lead">We build a San Francisco intake navigator (Track 1, with fund matching): a paralegal chats with an ADK agent that finds open residential 311 hazards on the tenant's block, matches the statute and an eligible fund, and drafts the Tenant Stabilization Brief. Five owners, one live deploy by <strong>T+2:30</strong>.</p>
+
+  <h2>Decisions locked</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Decision</th><th>Choice</th></tr></thead>
+    <tbody>
+      <tr><td class="name">Metro</td><td>San Francisco (42 tracts, 140 open residential 311s, 9 decoys)</td></tr>
+      <tr><td class="name">Track</td><td>1, Today at intake, with Track 2 fund matching built in</td></tr>
+      <tr><td class="name">User</td><td>Right-to-counsel paralegal with a tenant facing a Monday hearing</td></tr>
+      <tr><td class="name">Agent</td><td>ADK in Python on Gemini</td></tr>
+      <tr><td class="name">Search</td><td>BigQuery <code>AI.EMBED</code> (gemini-embedding-2) + <code>VECTOR_SEARCH</code>, then the Residential + open filter</td></tr>
+      <tr><td class="name">MCP</td><td>BigQuery built-in MCP server (Sid to confirm vs. MCP Toolbox)</td></tr>
+      <tr><td class="name">Deploy</td><td>Cloud Run, min-instances 1</td></tr>
+      <tr><td class="name">GCP project</td><td>qwiklabs-gcp-04-3b4b41069fc3, dataset <code>a4i_housing</code> (already loaded)</td></tr>
+      <tr><td class="name">Repo</td><td><a href="https://github.com/karthikdodo/a4i-housing-navigator">karthikdodo/a4i-housing-navigator</a> (public)</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Who owns what</h2>
+  <p>Each person works on their own branch and merges to <code>main</code> only when someone else needs the work.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Person</th><th>Owns</th><th>Done when</th><th>Branch</th></tr></thead>
+    <tbody>
+      <tr><td class="name">Sid<span class="role">Architect</span></td><td>Architecture diagram; brief JSON contract; Vertex connection + IAM; MCP choice; Cloud Run deploy</td><td>Live URL serving the agent, min-instances 1</td><td><code>infra</code></td></tr>
+      <tr><td class="name">Karthik<span class="role">Chatbot</span></td><td>ADK agent; custom tools (block evidence search, statute match, fund match, tract context, equity audit); system prompt caveats; brief + intake memo</td><td>Multi-turn chat returns a full brief from real BigQuery data</td><td><code>agent</code></td></tr>
+      <tr><td class="name">Prachi<span class="role">Analyst</span></td><td>Embedding tables (complaints, statutes, funds); vector search SQL; decoy check; 4-quarter tract summary; demo block pick; equity audit numbers</td><td>9 of 9 decoys filtered; SQL and numbers handed over</td><td><code>data</code></td></tr>
+      <tr><td class="name">Selvan<span class="role">UI</span></td><td>Web UI: chat panel + Stabilization Brief card + excluded-decoys panel; built on mock JSON first</td><td>Works end to end against the live URL</td><td><code>ui</code></td></tr>
+      <tr><td class="name">April<span class="role">TPM</span></td><td>Timeline and scope cuts; repo access; integration checks; deck; 3-minute video; submission</td><td>All four artifacts submitted on the portal</td><td><code>story</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Hand-offs</h2>
+  <p>These seven hand-offs are what let people work in parallel. A late one blocks someone else, so flag it in chat right away.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>By</th><th>Hand-off</th><th>From</th><th>To</th></tr></thead>
+    <tbody>
+      <tr><td class="when">T+0:20</td><td>Brief JSON contract (fields of the brief card)</td><td>Sid</td><td>Karthik, Selvan</td></tr>
+      <tr><td class="when">T+0:30</td><td>Vertex connection <code>us.a4i-vertex</code> working</td><td>Sid</td><td>Prachi</td></tr>
+      <tr><td class="when">T+1:30</td><td>Vector search SQL with the decoy filter, tested</td><td>Prachi</td><td>Karthik</td></tr>
+      <tr><td class="when">T+1:30</td><td>Demo scenario on a real SF block</td><td>Prachi</td><td>April, Karthik</td></tr>
+      <tr><td class="when">T+2:30</td><td>Live Cloud Run URL</td><td>Sid, Karthik</td><td>Selvan, April</td></tr>
+      <tr><td class="when">T+3:00</td><td>Equity audit numbers + silent-distress tracts</td><td>Prachi</td><td>April</td></tr>
+      <tr><td class="when">T+3:30</td><td>Feature freeze</td><td>April</td><td>Everyone</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Checkpoints</h2>
+  <p>The whole run is 4.5 hours. The deploy at T+2:30 is the one that cannot slip.</p>
+  <ol class="timeline">
+    <li><span class="t">T+0:00 to 0:20, everyone:</span> agree on the scenario sentence and the brief JSON; create branches; add collaborators to the repo.</li>
+    <li><span class="t">T+0:20 to 1:30, in parallel:</span> Prachi embeds the data and tests the decoy filter; Karthik builds the agent on stub tools; Selvan builds the UI on mock JSON; Sid sets up the connection and deploy pipeline; April drafts the deck outline.</li>
+    <li><span class="t">T+1:30:</span> the agent swaps its stub tools for Prachi's real SQL.</li>
+    <li class="key"><span class="t">T+2:30:</span> first deploy to Cloud Run, even if rough; the UI switches to the live URL.</li>
+    <li><span class="t">T+2:30 to 3:30:</span> run the decoy demo, add equity audit numbers, fix bugs.</li>
+    <li class="key"><span class="t">T+3:30:</span> feature freeze; record the video on the live app.</li>
+    <li><span class="t">T+4:00 to 4:30:</span> submit the repo, the Skills project link, the deck and the video.</li>
+  </ol>
+
+  <h2>Rules and open decisions</h2>
+  <ul>
+    <li>One shared GCP project: never rename or drop a table in <code>a4i_housing</code> without saying so in chat.</li>
+    <li>Keep the <code>audit_*</code> columns out of search, scoring and prompts; use them only in the equity audit.</li>
+    <li>Add up the 4 quarters of eviction filings per tract before joining, or every count is 4x too high.</li>
+    <li>Say it plainly in the app and deck: 311 records prove block conditions, not the tenant's unit; eviction filings are modeled.</li>
+    <li>April may cut scope at T+2:30 if there is no deploy.</li>
+  </ul>
+  <p><strong>Open decisions</strong></p>
+  <ul class="checks">
+    <li>Sid: BigQuery built-in MCP server or MCP Toolbox?</li>
+    <li>Selvan: custom web UI, or <code>adk web</code> as a fallback if time runs short?</li>
+    <li>Prachi: which SF block is the demo scenario?</li>
+    <li>April: if time allows, which bonus to add (no-open-case fallback that drafts a 311 request)?</li>
+  </ul>
+
+  <footer>A4I 2026 &middot; Affordable Housing Stability &amp; Eviction Prevention Navigator</footer>
+</main>
+</body>
+</html>
