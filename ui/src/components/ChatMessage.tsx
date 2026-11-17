@@ -4,6 +4,7 @@ import {Search} from 'lucide-react';
 import {toHtml} from '../a2ui/markdown';
 import type {ChatItem} from '../a2ui/useNavigator';
 import {VoiceClipPlayer} from './Voice';
+import {AgentRunCard} from '../AgentRun';
 
 const pop = {initial: {opacity: 0, y: 10, scale: 0.98}, animate: {opacity: 1, y: 0, scale: 1}, transition: {type: 'spring' as const, stiffness: 380, damping: 30}};
 
@@ -13,6 +14,13 @@ export function ChatMessage({m, onChip}: {m: ChatItem; onChip: (id: string) => v
     const id = (e.target as HTMLElement).closest<HTMLElement>('[data-record]')?.dataset.record;
     if (id) onChip(id);
   };
+
+  if (m.role === 'run' && m.run)
+    return (
+      <motion.div className="nv-ar-wrap" initial={{opacity: 0, y: 6}} animate={{opacity: 1, y: 0}}>
+        <AgentRunCard run={m.run} />
+      </motion.div>
+    );
 
   if (m.role === 'status')
     return (

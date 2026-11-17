@@ -10,6 +10,8 @@ import {Board, DEFAULT_LAYOUT, loadLayout, type Layout, type SectionDef} from '.
 import {ChatMessage, Typing} from './components/ChatMessage';
 import {Composer} from './components/Composer';
 import {VoiceIntake} from './components/VoiceIntake';
+import {AgentTeam} from './AgentRun';
+import type {ChatItem} from './a2ui/useNavigator';
 
 function Surface({s}: {s?: Parameters<typeof A2uiSurface>[0]['surface']}) {
   return s ? <A2uiSurface surface={s} /> : <div className="nv-skeleton" aria-hidden="true" />;
@@ -21,11 +23,29 @@ export default function App() {
   const [dropFiles, setDropFiles] = useState<File[]>([]);
   const [dragOverChat, setDragOverChat] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
+  // Follow new messages only while the reader is at the bottom. If they scrolled up to read an
+  // agent's details, live updates must not yank the view (or the page) away.
+  const stickToBottom = useRef(true);
+  const onChatScroll = () => {
+    const b = chatRef.current;
+    if (b) stickToBottom.current = b.scrollHeight - b.scrollTop - b.clientHeight < 80;
+  };
 
   useEffect(() => {
-    // Braces matter: newer Chrome returns a Promise from scrollIntoView, which React rejects as a cleanup.
-    endRef.current?.scrollIntoView({block: 'end', behavior: 'smooth'});
+    const b = chatRef.current;
+    // A new user turn (typed, suggestion chip, or voice) always brings the view back to the bottom.
+    if (nav.chat[nav.chat.length - 1]?.role === 'user') stickToBottom.current = true;
+    // Scroll the chat panel only, never the page (scrollIntoView would move every scrolling ancestor).
+    if (b && stickToBottom.current) b.scrollTo({top: b.scrollHeight, behavior: 'smooth'});
   }, [nav.chat]);
+  const send = useCallback(
+    (...args: Parameters<typeof nav.ask>) => {
+      stickToBottom.current = true; // your own new message always brings you back to the bottom
+      nav.ask(...args);
+    },
+    [nav],
+  );
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') nav.setOverlay('none');
@@ -43,6 +63,23 @@ export default function App() {
   const clearDrop = useCallback(() => setDropFiles([]), []);
 
   const s = nav.surfaces;
+  // Turns with a live agent run show it instead of the one-line status messages.
+  const visibleChat = (() => {
+    const out: ChatItem[] = [];
+    let seg: ChatItem[] = [];
+    const flush = () => {
+      const hasRun = seg.some(m => m.role === 'run');
+      out.push(...seg.filter(m => !(hasRun && m.role === 'status' && !m.text.startsWith('⚠'))));
+      seg = [];
+    };
+    for (const m of nav.chat) {
+      if (m.role === 'user') flush();
+      seg.push(m);
+    }
+    flush();
+    return out;
+  })();
+  const runLive = !!nav.lastRun && nav.lastRun.endedAt === null;
   const sections: Record<string, SectionDef> = {
     queue: {title: 'Intake queue', icon: ListTodo, className: 'nv-sec-queue', body: <Surface s={s['intake_queue']} />},
     map: {title: 'Location', icon: MapPinned, className: 'nv-sec-map', body: <Surface s={s['case_map']} />},
@@ -53,7 +90,7 @@ export default function App() {
       className: `nv-sec-chat${dragOverChat ? ' is-drop' : ''}`,
       actions: (
         <>
-          <span className="nv-small nv-muted nv-hide-sm">{nav.caseId} · ADK + Gemini</span>
+          <span className="nv-small nv-muted nv-hide-sm">{nav.caseId} · ADK multi-agent + Gemini</span>
           <button
             type="button"
             className={`nv-icon-btn${nav.readAloud ? ' is-on' : ''}`}
@@ -78,7 +115,8 @@ export default function App() {
           onDragLeave={() => setDragOverChat(false)}
           onDrop={onDropChat}
         >
-          <div className="nv-chat-body" aria-live="polite">
+          <AgentTeam run={nav.lastRun} />
+          <div className="nv-chat-body" aria-live="polite" ref={chatRef} onScroll={onChatScroll}>
             {nav.chat.length === 0 ? (
               <motion.div className="nv-empty" initial={{opacity: 0}} animate={{opacity: 1}}>
                 <MessagesSquare size={28} aria-hidden="true" />
@@ -88,10 +126,10 @@ export default function App() {
                 </p>
               </motion.div>
             ) : null}
-            {nav.chat.map(m => (
+            {visibleChat.map(m => (
               <ChatMessage key={m.id} m={m} onChip={nav.focusRecord} />
             ))}
-            <AnimatePresence>{nav.busy ? <Typing /> : null}</AnimatePresence>
+            <AnimatePresence>{nav.busy && !runLive ? <Typing /> : null}</AnimatePresence>
             <div ref={endRef} />
           </div>
           <div className="nv-suggestions">
@@ -100,7 +138,7 @@ export default function App() {
           <Composer
             sid={nav.sid}
             busy={nav.busy}
-            onSend={nav.ask}
+            onSend={send}
             onError={nav.flash}
             pendingFiles={dropFiles}
             clearPendingFiles={clearDrop}
@@ -124,7 +162,7 @@ export default function App() {
         <header className="nv-topbar">
           <div className="nv-brand">
             <Home size={22} aria-hidden="true" />
-            <span>Stabilization Navigator</span>
+            <span>Tenant Voice</span>
           </div>
           <span className="nv-pill">San Francisco · CA · FIPS 06</span>
           {nav.mode === 'mock' ? (

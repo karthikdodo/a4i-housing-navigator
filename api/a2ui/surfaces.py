@@ -117,7 +117,7 @@ def documents_components() -> list[dict]:
              {"key": "memo", "title": P("/tabs/memo"), "child": "tab_memo"},
          ]},
         # Evidence
-        column("tab_ev", ["ev_title", "ev_empty", "ev_none", "ev_list", "ex_box", "ev_photos", "ev_boundary"]),
+        column("tab_ev", ["ev_photos", "ev_title", "ev_empty", "ev_none", "ev_list", "ex_box", "ev_boundary"]),
         {"id": "ev_photos", "component": "PhotoGallery", "title": P("/photos_title"), "note": P("/photos_note"),
          "photos": P("/photos")},
         {"id": "ev_title", "component": "SectionTitle", "text": "Corroborating 311 records",

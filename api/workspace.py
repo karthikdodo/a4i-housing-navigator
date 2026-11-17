@@ -90,7 +90,8 @@ class Workspace:
 
     def case_event(self) -> dict:
         return {"type": "case", "case_id": self.active_id, "mode": self.runner.mode,
-                "transcript": [t.to_json() for t in self.case.transcript]}
+                "transcript": [t.to_json() for t in self.case.transcript],
+                "trace": self.case.trace}
 
     # ------------------------------------------------------------------ inputs
     async def connect(self) -> list[dict]:
@@ -168,7 +169,10 @@ class Workspace:
         elif name == "mark_memo_reviewed":
             if self.case.memo_markdown:
                 self.case.memo_status = "reviewed"
-            yield self.updates((S.DOCUMENTS, S.BRIEF))
+                if self.case.brief:
+                    self.case.refresh_queue_status()
+            # The case header (stage 8 "Memo & review") and the queue show review status too.
+            yield self.updates((S.HEADER, S.QUEUE, S.DOCUMENTS, S.BRIEF))
         elif name == "submit_intake":
             async for out in self._submit_intake(ctx):
                 yield out
@@ -265,6 +269,12 @@ class Workspace:
         if ev.kind == "brief":
             c.apply_brief(ev.result)
             return [{"type": "brief", "brief": ev.result}, self.updates()]
+        if ev.kind == "trace":
+            # Live agent activity: every tool call by the coordinator and its sub-agents.
+            turn = sum(1 for t in c.transcript if t.role == "user")
+            item = {**(ev.result or {}), "turn": turn}
+            c.trace.append(item)
+            return [{"type": "trace", **item}]
         return []
 
     async def _submit_intake(self, ctx: dict) -> AsyncIterator[dict]:

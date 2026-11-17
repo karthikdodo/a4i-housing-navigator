@@ -63,16 +63,60 @@ class LiveRunner:
         agent_dir = str(REPO / "agent")
         if agent_dir not in sys.path:
             sys.path.insert(0, agent_dir)
-        from google.adk.agents.run_config import RunConfig, StreamingMode  # noqa: F401
+        from google.adk.agents.run_config import RunConfig, StreamingMode, ToolThreadPoolConfig  # noqa: F401
         from google.adk.runners import InMemoryRunner
+        from navigator import trace
         from navigator.agent import TOOL_STATUS_TEXT, root_agent
 
         self._RunConfig, self._StreamingMode = RunConfig, StreamingMode
+        # Sync tools (BigQuery, Gemini vision) run in threads so they never block the event loop:
+        # other sessions keep streaming, and a tool's live 'start' trace reaches the UI right away.
+        self._tool_pool = ToolThreadPoolConfig(max_workers=8)
+        self._trace = trace
         self.status_text = {**STATUS_TEXT, **TOOL_STATUS_TEXT}
         self.runner = InMemoryRunner(agent=root_agent, app_name="navigator")
 
     async def run(self, user_id: str, session_id: str, text: str, case: CaseState,
                   attachments: Optional[list[dict]] = None) -> AsyncIterator[AgentEvent]:
+        """ADK events merged with live `trace` events from every agent's tool callbacks.
+
+        Sub-agents (AgentTool) don't stream their own events, so their tool calls would only
+        show up after they finish. navigator.trace reports each call from inside the agent as it
+        starts and ends; this method interleaves those reports with the runner's events.
+        """
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        done = object()
+
+        def sink(ev: dict) -> None:  # called from tool callbacks; thread-safe hand-off to the loop
+            loop.call_soon_threadsafe(queue.put_nowait, AgentEvent("trace", tool=ev.get("tool"), result=ev))
+
+        async def pump() -> None:
+            token = self._trace.SINK.set(sink)  # ADK's inner tasks copy this context
+            try:
+                async for ev in self._adk_events(user_id, session_id, text, attachments):
+                    await queue.put(ev)
+            except Exception as e:  # re-raised in the consumer
+                await queue.put(e)
+            finally:
+                self._trace.SINK.reset(token)
+                await queue.put(done)
+
+        task = asyncio.create_task(pump())
+        try:
+            while True:
+                item = await queue.get()
+                if item is done:
+                    break
+                if isinstance(item, Exception):
+                    raise item
+                yield item
+        finally:
+            if not task.done():
+                task.cancel()
+
+    async def _adk_events(self, user_id: str, session_id: str, text: str,
+                          attachments: Optional[list[dict]] = None) -> AsyncIterator[AgentEvent]:
         from google.genai import types
 
         from .media import get_upload
@@ -82,18 +126,18 @@ class LiveRunner:
             await svc.create_session(app_name="navigator", user_id=user_id, session_id=session_id)
 
         parts = [types.Part(text=text)]
-        for ph in attachments or []:  # tenant photos go to Gemini as images
-            up, path = get_upload(ph["id"])
-            parts.append(types.Part.from_bytes(data=path.read_bytes(), mime_type=up.mime))
         if attachments:
+            # The coordinator gets photo ids, not pixels: its analyze_photos tool runs Gemini vision
+            # with a fixed output schema, so the analysis is a visible, structured step in the trace.
+            ids = [ph["id"] for ph in attachments if get_upload(ph["id"])[0].kind == "image"]
             parts.append(types.Part(text=(
-                "The photos above were taken by the tenant. Describe only what is visible, say they are "
-                "tenant-provided and not a public record or inspection finding, and never cite them as 311 evidence.")))
+                f"[Attached tenant photos: photo_ids={ids}. Call analyze_photos with these ids. The photos "
+                "are tenant-provided, not a public record or inspection finding; never cite them as 311 evidence.]")))
         message = types.Content(role="user", parts=parts)
         pending_args: dict[str, dict] = {}
         async for event in self.runner.run_async(
             user_id=user_id, session_id=session_id, new_message=message,
-            run_config=self._RunConfig(streaming_mode=self._StreamingMode.SSE),
+            run_config=self._RunConfig(streaming_mode=self._StreamingMode.SSE, tool_thread_pool_config=self._tool_pool),
         ):
             trace_replayed = False  # replay specialist_trace once per event, not once per part
             for part in (event.content.parts if event.content else []) or []:
@@ -142,6 +186,26 @@ _MEMO = """## Intake memo — {case_id}
 **Caveats.** 311 records are redacted to the 100-block and do not prove conditions inside her unit. Eviction filing counts are modeled baselines."""
 
 
+_TRACE_MOD: Any = None
+
+
+def _trace_module():
+    """agent/navigator/trace.py (pure Python) for labels and summaries, loaded by file path so the
+    mock runner never imports the agent package (and ADK). None if the file is missing."""
+    global _TRACE_MOD
+    if _TRACE_MOD is None:
+        import importlib.util  # noqa: PLC0415
+        path = REPO / "agent" / "navigator" / "trace.py"
+        try:
+            spec = importlib.util.spec_from_file_location("navigator_trace_standalone", path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            _TRACE_MOD = mod
+        except Exception:
+            _TRACE_MOD = False
+    return _TRACE_MOD or None
+
+
 class MockRunner:
     """Scripted replay of the INT-1142 demo. Keyword routing, real data, fixed timings."""
 
@@ -165,9 +229,26 @@ class MockRunner:
             await self._sleep(0.25)
         yield AgentEvent("message", text=text, final=True)
 
+    # Which agent owns each tool in multi-agent mode (mirrors agent/navigator/specialists.py).
+    MOCK_AGENT = {"semantic_search": "evidence_researcher", "locate_block": "evidence_researcher",
+                  "tract_context": "evidence_researcher", "equity_audit": "equity_auditor"}
+
     async def _tool(self, name: str, result: Any, args: Optional[dict] = None) -> AsyncIterator[AgentEvent]:
+        trace = _trace_module()
+        cid = f"mock-{name}-{id(result)}-{asyncio.get_running_loop().time()}"
+        agent = self.MOCK_AGENT.get(name, "navigator")
         yield AgentEvent("status", tool=name, text=STATUS_TEXT.get(name, "Working…"))
+        if trace:
+            yield AgentEvent("trace", tool=name, result={
+                "phase": "start", "id": cid, "agent": agent, "tool": name, "kind": "tool",
+                "args": args or {}, "label": trace._label(name, args or {})})
+        t0 = asyncio.get_running_loop().time()
         await self._sleep(1.5)
+        if trace:
+            summary, ok = trace._summary(name, result)
+            yield AgentEvent("trace", tool=name, result={
+                "phase": "end", "id": cid, "agent": agent, "tool": name, "kind": "tool",
+                "summary": summary, "ok": ok, "ms": int((asyncio.get_running_loop().time() - t0) * 1000)})
         yield AgentEvent("tool", tool=name, args=args or {}, result=copy.deepcopy(result))
 
     def _brief(self, case: CaseState, memo: Optional[str] = None) -> dict:

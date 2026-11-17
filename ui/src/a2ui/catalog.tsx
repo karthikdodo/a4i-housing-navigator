@@ -222,22 +222,50 @@ export const DeadlineCard = createComponentImplementation(
   ),
 );
 
+type Stage = {n?: number; key?: string; label: string; state: string; detail?: string; note?: string};
+
 export const StepTracker = createComponentImplementation(
   {
     name: 'StepTracker',
     schema: z.object({steps: S.DynamicValue}).describe('Case progress. `steps` binds to a list of {label, state: done|current|todo}.'),
   },
   ({props}) => {
-    const steps = (Array.isArray(props.steps) ? props.steps : []) as {label: string; state: string}[];
+    const steps = (Array.isArray(props.steps) ? props.steps : []) as Stage[];
+    const done = steps.filter(s => s.state === 'done' || s.state === 'skipped').length;
     return (
-      <ol className="nv-steps" aria-label="Case progress">
-        {steps.map(s => (
-          <li key={s.label} className={`nv-step nv-step-${s.state}`} aria-current={s.state === 'current' ? 'step' : undefined}>
-            {s.state === 'done' ? '✓ ' : s.state === 'current' ? '● ' : ''}
-            {s.label}
-          </li>
-        ))}
-      </ol>
+      <div className="nv-stages-wrap">
+        <div className="nv-stages-head">
+          <span>Case progress</span>
+          <span className="nv-stages-count">
+            {done}/{steps.length} stages
+          </span>
+          <span className="nv-stages-bar" aria-hidden="true">
+            <span style={{width: `${steps.length ? (done / steps.length) * 100 : 0}%`}} />
+          </span>
+        </div>
+        <ol className="nv-stages" aria-label="Case progress">
+          {steps.map((s, i) => (
+            <motion.li
+              key={s.key ?? s.label}
+              initial={{opacity: 0, y: 4}}
+              animate={{opacity: 1, y: 0}}
+              transition={{delay: i * 0.03}}
+              className={`nv-stage is-${s.state}`}
+              aria-current={s.state === 'current' ? 'step' : undefined}
+              title={s.note || s.detail || s.label}
+            >
+              <span className="nv-stage-num" aria-hidden="true">
+                {s.state === 'done' ? '✓' : s.state === 'warn' ? '!' : s.state === 'skipped' ? '–' : s.n ?? i + 1}
+              </span>
+              <span className="nv-stage-text">
+                <span className="nv-stage-label">{s.label}</span>
+                {s.detail ? <span className="nv-stage-detail">{s.detail}</span> : null}
+                {s.note ? <span className="nv-stage-note">{s.note}</span> : null}
+              </span>
+            </motion.li>
+          ))}
+        </ol>
+      </div>
     );
   },
 );
@@ -579,7 +607,25 @@ export const IconButton = createComponentImplementation(
   ),
 );
 
-type Photo = {url: string; name?: string; caption?: string};
+type Hazard = {type?: string; severity?: string; where?: string; confidence?: number; visible_evidence?: string};
+type Photo = {url: string; name?: string; caption?: string; hazards?: Hazard[]; analyzed?: boolean; people_visible?: boolean};
+
+const SEV_RANK: Record<string, number> = {low: 0, moderate: 1, severe: 2};
+const hazardLabel = (t?: string) => (t ?? 'other').replace(/_/g, ' ');
+const worstHazard = (hs: Hazard[] = []) =>
+  hs.reduce<Hazard | null>((w, h) => (!w || (SEV_RANK[h.severity ?? 'low'] ?? 0) > (SEV_RANK[w.severity ?? 'low'] ?? 0) ? h : w), null);
+
+function HazardChips({hazards}: {hazards: Hazard[]}) {
+  return (
+    <div className="nv-hazards">
+      {hazards.map((h, i) => (
+        <span key={i} className={`nv-hazard sev-${h.severity ?? 'low'}`} title={[h.where, h.visible_evidence].filter(Boolean).join(' · ')}>
+          {hazardLabel(h.type)} · {h.severity}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 export const PhotoGallery = createComponentImplementation(
   {
@@ -590,7 +636,7 @@ export const PhotoGallery = createComponentImplementation(
   },
   ({props}) => {
     const photos = (Array.isArray(props.photos) ? props.photos : []) as Photo[];
-    const [open, setOpen] = useState<string | null>(null);
+    const [open, setOpen] = useState<Photo | null>(null);
     if (!props.title) return null;
     return (
       <section className="nv-photos" aria-label={props.title}>
@@ -599,19 +645,57 @@ export const PhotoGallery = createComponentImplementation(
             <ImageIcon size={16} aria-hidden="true" />
             {props.title}
           </h2>
-          <span className="nv-badge nv-tone-neutral">tenant-provided</span>
+          <span className="nv-badge nv-tone-neutral">tenant-provided · not 311 evidence</span>
         </div>
-        <div className="nv-photo-grid">
-          {photos.map((p, i) => (
-            <motion.button {...enter} transition={{...enter.transition, delay: i * 0.05}} key={p.url} type="button" className="nv-photo" onClick={() => setOpen(p.url)} aria-label={`Open photo ${p.name ?? i + 1}`}>
-              <img src={p.url} alt={p.caption || `Tenant photo ${i + 1}`} loading="lazy" />
-            </motion.button>
-          ))}
+        <div className="nv-photo-cards">
+          {photos.map((p, i) => {
+            const worst = worstHazard(p.hazards);
+            return (
+              <motion.figure {...enter} transition={{...enter.transition, delay: i * 0.05}} key={p.url} className="nv-photo-card">
+                <button type="button" className="nv-photo" onClick={() => setOpen(p)} aria-label={`Open photo ${p.name ?? i + 1}`}>
+                  <img src={p.url} alt={p.caption || `Tenant photo ${i + 1}`} loading="lazy" />
+                  {worst ? <span className={`nv-photo-flag sev-${worst.severity ?? 'low'}`}>{hazardLabel(worst.type)}</span> : null}
+                </button>
+                <figcaption>
+                  {p.analyzed ? (
+                    <>
+                      {p.caption ? <p className="nv-photo-caption">{p.caption}</p> : null}
+                      {p.hazards?.length ? <HazardChips hazards={p.hazards} /> : <span className="nv-small nv-muted">No visible hazard found.</span>}
+                      {p.people_visible ? <span className="nv-hazard sev-moderate">people / personal info visible: redact</span> : null}
+                    </>
+                  ) : (
+                    <span className="nv-small nv-muted">Not analyzed yet. Ask the navigator about this photo.</span>
+                  )}
+                </figcaption>
+              </motion.figure>
+            );
+          })}
         </div>
         {props.note ? <p className="nv-small nv-muted">{props.note}</p> : null}
         {open ? (
           <div className="nv-lightbox" role="dialog" aria-modal="true" aria-label="Photo" onClick={() => setOpen(null)}>
-            <motion.img initial={{scale: 0.92, opacity: 0}} animate={{scale: 1, opacity: 1}} src={open} alt="Tenant photo, enlarged" />
+            <motion.div className="nv-lightbox-body" initial={{scale: 0.94, opacity: 0}} animate={{scale: 1, opacity: 1}}>
+              <img src={open.url} alt={open.caption || 'Tenant photo, enlarged'} />
+              {open.analyzed ? (
+                <div className="nv-lightbox-findings">
+                  <strong>Gemini vision · tenant-provided photo</strong>
+                  {open.caption ? <p>{open.caption}</p> : null}
+                  <ul>
+                    {(open.hazards ?? []).map((h, i) => (
+                      <li key={i}>
+                        <span className={`nv-hazard sev-${h.severity ?? 'low'}`}>
+                          {hazardLabel(h.type)} · {h.severity}
+                        </span>{' '}
+                        {h.where}
+                        {h.visible_evidence ? <em> {h.visible_evidence}</em> : null}
+                        {typeof h.confidence === 'number' ? <span className="nv-muted"> ({Math.round(h.confidence * 100)}% confidence)</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="nv-small">Not a public record or inspection finding. It cannot show when or where the photo was taken.</p>
+                </div>
+              ) : null}
+            </motion.div>
           </div>
         ) : null}
       </section>
