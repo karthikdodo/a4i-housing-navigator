@@ -3,7 +3,19 @@
 **Owners:** Karthik (`agent.py`, `prompts.py`, `brief.py`, `bq_mcp.py`, `tools/semantic_search.py`) · Prachi (`tools/match_fund.py`, `tools/tract_context.py`, `tools/equity_audit.py`)
 **Branches:** `agent-core` (Karthik), `agent-tools` (Prachi) · **Contract:** [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
 
-One ADK root agent (`navigator`) on Gemini. The WebSocket server in [`api/`](../api/) imports `root_agent` and runs it.
+A small multi-agent system on Gemini. The root agent `navigator` is a **coordinator** that talks to the paralegal and writes the brief; it delegates to three **specialist agents** (wrapped as ADK `AgentTool`s). The WebSocket server in [`api/`](../api/) imports `root_agent` and runs it, unchanged.
+
+```
+navigator (coordinator, root)   resolve_date, match_fund, submit_brief, add_equity_note
+  ├─ evidence_researcher        semantic_search, locate_block, tract_context
+  ├─ equity_auditor             equity_audit       (code-blocked until the brief exists)
+  └─ data_analyst               BigQuery MCP       (audit_* guard; only if A4I_ENABLE_BQ_MCP)
+```
+
+- Specialists' state writes flow back to the shared session, so `submit_brief` still rejects decoys and invented IDs.
+- Specialists' inner tool calls are **not streamed**; the UI gets one `status` line per specialist call (`TOOL_STATUS_TEXT`). `submit_brief` / `add_equity_note` stay on the coordinator so the `brief` event is unchanged.
+- Only `equity_auditor` ever sees `audit_*` data, which keeps it out of evidence selection by construction.
+- Fallback: `A4I_MULTI_AGENT=false` runs the original single agent (same name, same contract).
 
 ## Run it
 
@@ -26,11 +38,12 @@ Try: *"Tenant on the 100 block of Turk St, no heat for two weeks and black mold.
 
 ```
 agent/navigator/
-  agent.py           root_agent, tool list, TOOL_STATUS_TEXT for the UI
-  prompts.py         system prompt: workflow, evidence rules, memo format
+  agent.py           root_agent (multi- or single-agent), TOOL_STATUS_TEXT for the UI
+  specialists.py     evidence_researcher, equity_auditor, data_analyst + equity guard
+  prompts.py         coordinator + specialist prompts; original single-agent prompt
   brief.py           submit_brief / add_equity_note + after-tool callback that records tool results
   bq_mcp.py          Google-managed BigQuery MCP server (read-only tools) + audit_* guard
-  config.py          project, dataset, model, embedding endpoint, table names
+  config.py          project, dataset, model, embedding endpoint, table names, A4I_MULTI_AGENT
   tools/
     resolve_date.py      "tomorrow" / "next Monday" / "Nov 23" → exact date (flags ambiguous ones)
     semantic_search.py   AI.EMBED + VECTOR_SEARCH (live BigQuery) + decoy filter

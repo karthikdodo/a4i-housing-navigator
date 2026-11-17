@@ -21,7 +21,7 @@
 
 | Decision | Why |
 |---|---|
-| **One root agent, not many** | Fewer prompts to debug and less latency during a live demo. A second agent (311 request drafter) is a stretch goal only. |
+| **Coordinator + 3 specialists** (`agent/navigator/specialists.py`) | The coordinator owns the conversation and the brief; `evidence_researcher`, `equity_auditor`, and `data_analyst` run as ADK `AgentTool`s. Shorter, focused prompts per job, and `audit_*` data is only reachable by the equity auditor. Same latency as the single agent (~40 s per case). `A4I_MULTI_AGENT=false` falls back to the original single agent. |
 | **WebSocket API in front** | One URL and one event format for the UI. Tool progress streams live, which looks good in the video. |
 | **Vector search is one tool for all three corpora** | `semantic_search(query, corpus)`: one function to test. The decoy filter lives *inside* the tool, so decoys never reach the LLM unlabeled. |
 | **Fund eligibility is plain Python** | AMI caps and open-case rules are legal criteria. Code decides, the LLM explains. |
