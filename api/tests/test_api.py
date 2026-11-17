@@ -145,12 +145,6 @@ def test_sse_message_and_intake_form():
     assert events[-1]["type"] == "turn_end"
 
 
-def test_dump_a2ui_messages():
-    OUT.mkdir(exist_ok=True)
-    (OUT / "a2ui_messages.json").write_text(json.dumps(ALL_A2UI, indent=1, ensure_ascii=False))
-    assert ALL_A2UI
-
-
 def _last_model(events, surface_id):
     for e in reversed(events):
         if e.get("type") == "a2ui":

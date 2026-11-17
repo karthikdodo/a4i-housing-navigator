@@ -9,9 +9,24 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {MessageProcessor, type ActionPayload, type SurfaceModel} from '@a2ui/web_core';
 import type {ReactCatalogComponent} from '@a2ui/react';
 import {navigatorCatalog} from './catalog';
-import {NavigatorSocket, type ServerEvent, type TranscriptTurn} from '../api/client';
+import {NavigatorSocket, sessionId, type ServerEvent, type TranscriptTurn} from '../api/client';
+import {speak} from '../api/media';
 
-export type ChatItem = {id: number; role: 'user' | 'agent' | 'status'; text: string; tool?: string | null; streaming?: boolean};
+export type Attachment = {id: string; url: string; kind: string; name?: string};
+export type VoiceClip = {id: string; url: string; duration: number; source?: string};
+export type ChatItem = {
+  id: number;
+  role: 'user' | 'agent' | 'status';
+  text: string;
+  tool?: string | null;
+  streaming?: boolean;
+  attachments?: Attachment[];
+  voice?: VoiceClip | null;
+};
+
+const toItem = (t: TranscriptTurn): ChatItem => ({
+  id: nextId++, role: t.role, text: t.text, tool: t.tool, attachments: t.attachments ?? [], voice: t.voice ?? null,
+});
 
 // Actions the browser handles itself (they change only this screen).
 const LOCAL = new Set(['open_brief', 'close_brief', 'print_brief', 'copy_memo', 'open_intake_form', 'close_intake_form']);
@@ -30,13 +45,32 @@ export function useNavigator() {
   const [overlay, setOverlay] = useState<'none' | 'brief' | 'intake'>('none');
   const [toast, setToast] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
+  const [readAloud, setReadAloudState] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('a4i.readAloud') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const readAloudRef = useRef(readAloud);
+  const setReadAloud = useCallback((on: boolean) => {
+    readAloudRef.current = on;
+    setReadAloudState(on);
+    if (!on) window.speechSynthesis?.cancel();
+    try {
+      window.localStorage.setItem('a4i.readAloud', on ? '1' : '0');
+    } catch {
+      /* storage blocked */
+    }
+  }, []);
+  const [sid] = useState(sessionId);
 
   const processorRef = useRef<MessageProcessor<ReactCatalogComponent> | null>(null);
   const socketRef = useRef<NavigatorSocket | null>(null);
 
   const flash = useCallback((t: string) => {
     setToast(t);
-    window.setTimeout(() => setToast(''), 2400);
+    window.setTimeout(() => setToast(''), 4500);
   }, []);
 
   const handleLocal = useCallback(
@@ -106,11 +140,14 @@ export function useNavigator() {
       case 'case':
         setCaseId(e.case_id);
         setMode(e.mode);
-        setChat(e.transcript.map((t: TranscriptTurn) => ({id: nextId++, role: t.role, text: t.text, tool: t.tool})));
+        setChat(e.transcript.map(toItem));
         break;
       case 'user_echo':
+        setBusy(true); // the user_turn that follows carries the bubble
+        break;
+      case 'user_turn':
         setBusy(true);
-        setChat(c => [...c, {id: nextId++, role: 'user', text: e.text}]);
+        setChat(c => [...c, toItem(e.turn)]);
         break;
       case 'status':
         setChat(c => [...c, {id: nextId++, role: 'status', text: e.text, tool: e.tool}]);
@@ -118,6 +155,7 @@ export function useNavigator() {
       case 'message':
         setChat(c => {
           const last = c[c.length - 1];
+          if (e.final && readAloudRef.current) speak(e.text);
           if (last?.role === 'agent' && last.streaming) {
             // `final` carries the whole reply again: replace the streamed chunks with it.
             const text = e.final ? e.text : last.text + e.text;
@@ -145,12 +183,17 @@ export function useNavigator() {
     return () => s.close();
   }, [onEvent, newProcessor]);
 
-  const ask = useCallback((text: string) => {
+  /** Sends a chat turn. The server echoes it back as `user_turn` (with photo and voice links). */
+  const ask = useCallback((text: string, extra: {attachments?: string[]; voice?: {id: string; duration: number; source: string}} = {}) => {
     const t = text.trim();
-    if (!t) return;
+    if (!t && !extra.attachments?.length) return;
     setBusy(true);
-    setChat(c => [...c, {id: nextId++, role: 'user', text: t}]);
-    socketRef.current?.say(t);
+    socketRef.current?.send({type: 'user_message', text: t, ...extra});
+  }, []);
+
+  /** Applies A2UI messages that came back from a REST call (voice intake fills the form this way). */
+  const applyA2ui = useCallback((messages: unknown[]) => {
+    processorRef.current?.processMessages(messages as never);
   }, []);
 
   /** Clicking a citation chip in chat: open its tab and highlight the record (server-side state). */
@@ -162,7 +205,7 @@ export function useNavigator() {
   }, []);
 
   return useMemo(
-    () => ({surfaces, chat, busy, connection, mode, caseId, overlay, setOverlay, toast, errors, ask, focusRecord, sid: socketRef.current?.sid}),
-    [surfaces, chat, busy, connection, mode, caseId, overlay, toast, errors, ask, focusRecord],
+    () => ({surfaces, chat, busy, connection, mode, caseId, overlay, setOverlay, toast, flash, errors, ask, focusRecord, applyA2ui, readAloud, setReadAloud, sid}),
+    [surfaces, chat, busy, connection, mode, caseId, overlay, toast, flash, errors, ask, focusRecord, applyA2ui, readAloud, setReadAloud, sid],
   );
 }

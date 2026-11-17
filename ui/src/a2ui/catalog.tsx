@@ -11,7 +11,13 @@
  *   - blue = kept evidence, orange = excluded, violet = modeled, red = deadline, green = eligible;
  *   - excluded records always show the failing field.
  */
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useRef, useState, type ComponentType} from 'react';
+import {motion} from 'motion/react';
+import {
+  ArrowLeft, CheckCircle2, Copy, Download, ExternalLink, FileText, Image as ImageIcon, MapPin, Mic, Printer,
+  RefreshCw, Send, Sparkles, UserPlus, Users, type LucideProps,
+} from 'lucide-react';
+import {MapView as MapViewImpl} from './MapView';
 import {z} from 'zod';
 import {CommonSchemas} from '@a2ui/web_core/v1_0';
 import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
@@ -24,6 +30,21 @@ const S = CommonSchemas;
 const Tone = z.enum(['evidence', 'excluded', 'deadline', 'eligible', 'modeled', 'neutral']);
 const DynTone = z.union([Tone, S.DynamicString]);
 type ChildRef = string | {id: string; basePath?: string};
+
+/** Icons the server may name (IconButton.icon, SectionTitle.icon). */
+export const ICONS: Record<string, ComponentType<LucideProps>> = {
+  userPlus: UserPlus, users: Users, sparkles: Sparkles, copy: Copy, download: Download, refresh: RefreshCw,
+  checkCircle: CheckCircle2, fileText: FileText, printer: Printer, arrowLeft: ArrowLeft, mapPin: MapPin,
+  mic: Mic, image: ImageIcon, send: Send, externalLink: ExternalLink,
+};
+const IconName = z.enum(Object.keys(ICONS) as [string, ...string[]]);
+const Ico = ({name, size = 16}: {name?: string; size?: number}) => {
+  const C = name ? ICONS[name] : undefined;
+  return C ? <C size={size} strokeWidth={2} aria-hidden="true" /> : null;
+};
+
+/** Cards fade and rise in as the agent adds them. */
+const enter = {initial: {opacity: 0, y: 8}, animate: {opacity: 1, y: 0}, transition: {duration: 0.28, ease: 'easeOut' as const}};
 
 const tone = (t: unknown) => `nv-tone-${typeof t === 'string' && t ? t : 'neutral'}`;
 const kids = (list: ChildRef[] | undefined, build: (id: string, base?: string) => React.ReactNode) =>
@@ -52,11 +73,16 @@ export const Badge = createComponentImplementation(
 export const SectionTitle = createComponentImplementation(
   {
     name: 'SectionTitle',
-    schema: z.object({text: S.DynamicString, meta: S.DynamicString.optional()}).describe('A panel or section heading with optional right-aligned metadata.'),
+    schema: z
+      .object({text: S.DynamicString, meta: S.DynamicString.optional(), icon: IconName.optional()})
+      .describe('A panel or section heading with an optional icon and right-aligned metadata.'),
   },
   ({props}) => (
     <div className="nv-section-title">
-      <h2>{props.text}</h2>
+      <h2>
+        <Ico name={props.icon} />
+        {props.text}
+      </h2>
       {props.meta ? <span>{props.meta}</span> : null}
     </div>
   ),
@@ -234,7 +260,7 @@ export const QueueItem = createComponentImplementation(
       .describe('One intake in the queue. Selecting it dispatches `action` (open_case).'),
   },
   ({props}) => (
-    <button type="button" className={`nv-queue-item${props.selected ? ' is-selected' : ''}`} aria-current={props.selected ? 'true' : undefined} onClick={() => props.action?.()}>
+    <motion.button layout {...enter} type="button" className={`nv-queue-item${props.selected ? ' is-selected' : ''}`} aria-current={props.selected ? 'true' : undefined} onClick={() => props.action?.()}>
       <span className="nv-row-between">
         <span className="nv-mono nv-small">{props.caseId}</span>
         {props.badge ? <span className={`nv-badge ${tone(props.badgeTone)}`}>{props.badge}</span> : null}
@@ -242,7 +268,7 @@ export const QueueItem = createComponentImplementation(
       <span className="nv-queue-title">{props.title}</span>
       <span className="nv-small nv-muted">{props.subtitle}</span>
       {props.status ? <span className={`nv-small nv-status ${tone(props.statusTone)}`}>{props.status}</span> : null}
-    </button>
+    </motion.button>
   ),
 );
 
@@ -293,7 +319,7 @@ export const RecordCard = createComponentImplementation(
 function RecordCardView(props: {recordId?: string; badge?: string; badgeTone?: unknown; title?: string; meta?: string; quote?: string; similarity?: number; weak?: boolean; focused?: boolean; updated?: boolean}) {
   const ref = useFocusScroll<HTMLElement>(props.focused);
   return (
-    <article ref={ref} id={`rec-${props.recordId}`} className={`nv-card${props.focused ? ' is-focused' : ''}`}>
+    <motion.article {...enter} ref={ref} id={`rec-${props.recordId}`} className={`nv-card${props.focused ? ' is-focused' : ''}`}>
       <div className="nv-row-between">
         <span className="nv-mono nv-small nv-strong">{props.recordId}</span>
         <span className="nv-row-gap">
@@ -306,7 +332,7 @@ function RecordCardView(props: {recordId?: string; badge?: string; badgeTone?: u
       {props.quote ? <p className="nv-quote">{props.quote}</p> : null}
       {props.similarity != null ? <Similarity value={props.similarity} weak={props.weak} /> : null}
       <div className="nv-provenance">public record</div>
-    </article>
+    </motion.article>
   );
 }
 
@@ -331,7 +357,7 @@ export const ExcludedCard = createComponentImplementation(
 function ExcludedCardView(props: {heading?: string; label?: string; summary?: string; detail?: string; focused?: boolean; actionLabel?: string; action?: () => unknown}) {
   const ref = useFocusScroll<HTMLDivElement>(props.focused);
   return (
-    <div ref={ref} className={`nv-excluded${props.focused ? ' is-focused' : ''}`}>
+    <motion.div {...enter} ref={ref} className={`nv-excluded${props.focused ? ' is-focused' : ''}`}>
       <div className="nv-row-between">
         <span className="nv-mono nv-small">{props.heading}</span>
         <span className="nv-excluded-label">{props.label}</span>
@@ -343,7 +369,7 @@ function ExcludedCardView(props: {heading?: string; label?: string; summary?: st
           {props.actionLabel ?? 'Ask why'}
         </button>
       ) : null}
-    </div>
+    </motion.div>
   );
 }
 
@@ -367,7 +393,7 @@ export const StatuteCard = createComponentImplementation(
       .describe('A matched statute: citation, protection, and what the tenant still needs for it to apply.'),
   },
   ({props}) => (
-    <article className={`nv-card${props.primary ? ' is-primary' : ''}${props.compact ? ' is-compact' : ''}`}>
+    <motion.article {...enter} className={`nv-card${props.primary ? ' is-primary' : ''}${props.compact ? ' is-compact' : ''}`}>
       <div className="nv-row-between">
         <span className="nv-mono nv-small nv-citation">
           {props.citation}
@@ -379,7 +405,7 @@ export const StatuteCard = createComponentImplementation(
       {props.protection ? <p className="nv-small">{props.protection}</p> : null}
       {props.appliesBecause ? <p className="nv-small">Applies because: {props.appliesBecause}</p> : null}
       {props.needs ? <div className="nv-needs">{props.needs}</div> : null}
-    </article>
+    </motion.article>
   ),
 );
 
@@ -400,7 +426,7 @@ export const FundCard = createComponentImplementation(
       .describe('An emergency fund with its fit (Likely / Conditional / Needs info) and why. `action` opens the intake page.'),
   },
   ({props}) => (
-    <article className="nv-card">
+    <motion.article {...enter} className="nv-card">
       <div className="nv-row-between">
         <strong>{props.name}</strong>
         <span className={`nv-badge ${tone(props.fitTone)}`}>{props.fitLabel}</span>
@@ -410,10 +436,10 @@ export const FundCard = createComponentImplementation(
       {props.why ? <p className="nv-small">{props.why}</p> : null}
       {props.intakeLabel && props.action ? (
         <button type="button" className="nv-link-button" onClick={() => props.action?.()}>
-          Intake: {props.intakeLabel} ↗
+          <ExternalLink size={13} aria-hidden="true" /> Intake: {props.intakeLabel}
         </button>
       ) : null}
-    </article>
+    </motion.article>
   ),
 );
 
@@ -425,7 +451,7 @@ export const StatTile = createComponentImplementation(
       .describe('A single figure. `modeled` adds the violet "modeled" tag; otherwise it reads "public record".'),
   },
   ({props}) => (
-    <div className="nv-stat">
+    <motion.div {...enter} className="nv-stat">
       <div className="nv-small nv-muted">{props.label}</div>
       <div className="nv-stat-value">{props.value}</div>
       <div className="nv-small nv-muted">
@@ -433,7 +459,7 @@ export const StatTile = createComponentImplementation(
         {props.note ? ' · ' : ''}
         {props.modeled ? <span className="nv-modeled">modeled</span> : <span>public record</span>}
       </div>
-    </div>
+    </motion.div>
   ),
 );
 
@@ -522,11 +548,99 @@ export const DataTable = createComponentImplementation(
   },
 );
 
+// ------------------------------------------------------------------ buttons, photos, map
+
+export const IconButton = createComponentImplementation(
+  {
+    name: 'IconButton',
+    schema: z
+      .object({
+        icon: IconName,
+        label: S.DynamicString,
+        variant: z.enum(['default', 'primary', 'chip']).optional(),
+        action: S.Action,
+        enabled: S.DynamicBoolean.optional(),
+        block: z.boolean().optional(),
+      })
+      .describe('A button with a leading icon. `enabled` false disables it; `block` makes it full width.'),
+  },
+  ({props}) => (
+    <motion.button
+      type="button"
+      whileHover={props.enabled === false ? undefined : {y: -1}}
+      whileTap={props.enabled === false ? undefined : {scale: 0.97}}
+      className={`nv-btn nv-btn-${props.variant ?? 'default'}${props.block ? ' is-block' : ''}`}
+      disabled={props.enabled === false}
+      onClick={() => props.action?.()}
+    >
+      <Ico name={props.icon} />
+      <span>{props.label}</span>
+    </motion.button>
+  ),
+);
+
+type Photo = {url: string; name?: string; caption?: string};
+
+export const PhotoGallery = createComponentImplementation(
+  {
+    name: 'PhotoGallery',
+    schema: z
+      .object({title: S.DynamicString, note: S.DynamicString.optional(), photos: S.DynamicValue})
+      .describe('Tenant-provided photos (not a public record). Hidden when `title` is empty.'),
+  },
+  ({props}) => {
+    const photos = (Array.isArray(props.photos) ? props.photos : []) as Photo[];
+    const [open, setOpen] = useState<string | null>(null);
+    if (!props.title) return null;
+    return (
+      <section className="nv-photos" aria-label={props.title}>
+        <div className="nv-section-title">
+          <h2>
+            <ImageIcon size={16} aria-hidden="true" />
+            {props.title}
+          </h2>
+          <span className="nv-badge nv-tone-neutral">tenant-provided</span>
+        </div>
+        <div className="nv-photo-grid">
+          {photos.map((p, i) => (
+            <motion.button {...enter} transition={{...enter.transition, delay: i * 0.05}} key={p.url} type="button" className="nv-photo" onClick={() => setOpen(p.url)} aria-label={`Open photo ${p.name ?? i + 1}`}>
+              <img src={p.url} alt={p.caption || `Tenant photo ${i + 1}`} loading="lazy" />
+            </motion.button>
+          ))}
+        </div>
+        {props.note ? <p className="nv-small nv-muted">{props.note}</p> : null}
+        {open ? (
+          <div className="nv-lightbox" role="dialog" aria-modal="true" aria-label="Photo" onClick={() => setOpen(null)}>
+            <motion.img initial={{scale: 0.92, opacity: 0}} animate={{scale: 1, opacity: 1}} src={open} alt="Tenant photo, enlarged" />
+          </div>
+        ) : null}
+      </section>
+    );
+  },
+);
+
+export const MapView = createComponentImplementation(
+  {
+    name: 'MapView',
+    schema: z
+      .object({
+        address: S.DynamicString,
+        center: S.DynamicValue.optional(),
+        markers: S.DynamicValue.optional(),
+        apiKey: S.DynamicString.optional(),
+        openUrl: S.DynamicString.optional(),
+      })
+      .describe('Google Map of the tenant block. With `apiKey`: Maps JavaScript API with pins for `markers` [{id, label, lat, lng, kind}]; without: a Google Maps embed of `address`.'),
+  },
+  ({props}) => <MapViewImpl {...props} />,
+);
+
 // ------------------------------------------------------------------ the catalog
 
 export const NAVIGATOR_COMPONENTS = [
   Badge, SectionTitle, Callout, Wrap, Grid, Collapsible, PanelTabs, CaseHeader, DeadlineCard, StepTracker,
   QueueItem, SimilarityBar, RecordCard, ExcludedCard, StatuteCard, FundCard, StatTile, MemoView, DocHeader, DataTable,
+  IconButton, PhotoGallery, MapView,
 ];
 
 /** Basic catalog (v1.0) + navigator components, under the navigator's own catalog id. */

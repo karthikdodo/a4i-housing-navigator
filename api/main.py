@@ -18,6 +18,10 @@ Endpoints (full reference: docs/UI_API.md)
     GET  /api/sessions/{sid}/cases/{cid}        one case (brief, memo, transcript)
     GET  /api/sessions/{sid}/cases/{cid}/brief  Stabilization Brief JSON
     GET  /api/sessions/{sid}/cases/{cid}/memo.md  intake memo download
+    POST /api/sessions/{sid}/uploads            tenant photo or audio clip (multipart `file`)
+    GET  /api/uploads/{upload_id}               the stored file
+    POST /api/sessions/{sid}/transcribe         voice clip -> transcript (Gemini, or the browser's live transcript)
+    POST /api/sessions/{sid}/intake/voice       transcript -> New intake form fields (+ A2UI updates)
     WS   /ws                                     the same, bidirectional (preferred by the UI)
 """
 
@@ -28,14 +32,15 @@ import logging
 import os
 import uuid
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import media
 from .a2ui import surfaces as S
 from .runners import make_runner
 from .workspace import Workspace
@@ -83,6 +88,10 @@ def config() -> dict:
         "a2ui": {"version": S.A2UI_VERSION, "catalogId": S.NAVIGATOR_CATALOG_ID,
                  "basicCatalogId": S.BASIC_CATALOG_ID, "surfaces": list(S.SURFACES)},
         "transports": {"websocket": "/ws", "sse": "/api/sessions/{session_id}/messages"},
+        "voice": {"transcription": "gemini" if media.use_gemini(RUNNER.mode) else "browser",
+                  "max_audio_mb": media.MAX_BYTES["audio"] // (1024 * 1024)},
+        "uploads": {"image_types": sorted(media.IMAGE_TYPES), "max_image_mb": media.MAX_BYTES["image"] // (1024 * 1024)},
+        "maps": {"has_api_key": bool(os.getenv("GOOGLE_MAPS_API_KEY"))},
     }
 
 
@@ -92,11 +101,11 @@ def a2ui_catalog() -> JSONResponse:
 
 
 class NewSession(BaseModel):
-    session_id: str | None = None
+    session_id: Optional[str] = None
 
 
 @app.post("/api/sessions")
-def create_session(body: NewSession | None = None) -> dict:
+def create_session(body: Optional[NewSession] = None) -> dict:
     sid = (body.session_id if body else None) or uuid.uuid4().hex[:12]
     ws = workspace(sid)
     return {"session_id": sid, "active_case": ws.active_id, "agent_mode": RUNNER.mode}
@@ -149,7 +158,9 @@ def get_memo(sid: str, cid: str) -> PlainTextResponse:
 
 
 class ChatIn(BaseModel):
-    text: str
+    text: str = ""
+    attachments: List[str] = []
+    voice: Optional[dict] = None
 
 
 def sse(events: AsyncIterator[dict]) -> StreamingResponse:
@@ -161,16 +172,72 @@ def sse(events: AsyncIterator[dict]) -> StreamingResponse:
 
 @app.post("/api/sessions/{sid}/messages")
 async def post_message(sid: str, body: ChatIn) -> StreamingResponse:
-    return sse(workspace(sid).user_message(body.text))
+    return sse(workspace(sid).user_message(body.text, attachments=body.attachments, voice=body.voice))
 
 
 @app.post("/api/sessions/{sid}/actions")
-async def post_action(sid: str, body: dict[str, Any]) -> StreamingResponse:
+async def post_action(sid: str, body: Dict[str, Any]) -> StreamingResponse:
     """Body: an A2UI v1.0 renderer-to-agent message, e.g. {"version": "1.0", "action": {...}}."""
     action = body.get("action") if "action" in body else body
     if not isinstance(action, dict) or "name" not in action:
         raise HTTPException(422, "Expected an A2UI v1.0 action message: {'version': '1.0', 'action': {...}}")
     return sse(workspace(sid).action(action))
+
+
+# ------------------------------------------------------------------------- uploads, voice
+
+
+async def _read_upload(file: UploadFile) -> media.Upload:
+    data = await file.read(media.MAX_BYTES["audio"] + 1)
+    try:
+        return media.save_upload(data, file.content_type or "", file.filename or "")
+    except media.UploadError as e:
+        raise HTTPException(415 if "type" in str(e) else 413, str(e)) from e
+
+
+@app.post("/api/sessions/{sid}/uploads")
+async def upload(sid: str, file: UploadFile = File(...)) -> dict:
+    """A tenant photo (or an audio clip). Send the returned `id` in a chat message's `attachments`."""
+    workspace(sid)
+    return (await _read_upload(file)).to_json()
+
+
+@app.get("/api/uploads/{upload_id}")
+def get_upload(upload_id: str) -> FileResponse:
+    try:
+        up, path = media.get_upload(upload_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "No such upload") from None
+    return FileResponse(path, media_type=up.mime, headers={
+        "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=86400",
+        "Content-Disposition": f'inline; filename="{up.name}"'})
+
+
+@app.post("/api/sessions/{sid}/transcribe")
+async def transcribe(sid: str, audio: UploadFile = File(...), browser_text: str = Form(""),
+                     duration: float = Form(0)) -> dict:
+    """Store a voice clip and transcribe it. The UI then sends the transcript as a chat message (or
+    to /intake/voice) with `voice: {id, duration, source}` so the chat history shows clip + transcript."""
+    workspace(sid)
+    up = await _read_upload(audio)
+    if up.kind != "audio":
+        raise HTTPException(415, "Expected an audio clip")
+    result = await media.transcribe(media.get_upload(up.id)[1].read_bytes(), up.mime, browser_text, RUNNER.mode)
+    return {**result, "text": media.redact_names(result["text"]), "audio": {**up.to_json(), "duration": duration}}
+
+
+class VoiceIntakeIn(BaseModel):
+    text: str
+
+
+@app.post("/api/sessions/{sid}/intake/voice")
+async def voice_intake(sid: str, body: VoiceIntakeIn) -> dict:
+    """Spoken intake -> form fields. Returns the fields and the A2UI updateDataModel messages that put
+    them into the New intake form surface, so the paralegal can check them before submitting."""
+    fields = await media.parse_intake(body.text, RUNNER.mode)
+    source = fields.pop("_source", "rules")
+    return {"fields": fields, "source": source, "transcript": media.redact_names(body.text),
+            "a2ui": workspace(sid).intake_form_patch(fields)["messages"]}
 
 
 # ------------------------------------------------------------------------- WebSocket
@@ -180,7 +247,7 @@ async def post_action(sid: str, body: dict[str, Any]) -> StreamingResponse:
 async def ws_endpoint(ws: WebSocket) -> None:
     """Client frames:
         {"type": "hello", "session_id"}                       -> snapshot of every surface + transcript
-        {"type": "user_message", "session_id", "text"}        -> agent turn
+        {"type": "user_message", "session_id", "text", "attachments"?: [upload id], "voice"?: {id, duration, source}}
         {"type": "a2ui_action", "session_id", "message": {"version": "1.0", "action": {...}}}
         {"type": "a2ui_error", "session_id", "message": {"version": "1.0", "error": {...}}}   (logged)
     """
@@ -195,7 +262,9 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 for e in await space.connect():
                     await ws.send_json(e)
             elif kind == "user_message":
-                async for e in space.user_message(str(frame.get("text", ""))):
+                async for e in space.user_message(str(frame.get("text", "")),
+                                                  attachments=list(frame.get("attachments") or []),
+                                                  voice=frame.get("voice")):
                     await ws.send_json(e)
             elif kind == "a2ui_action":
                 msg = frame.get("message") or {}
@@ -220,5 +289,7 @@ if (UI_DIST / "index.html").exists():
 
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str) -> FileResponse:
-        f = UI_DIST / path
-        return FileResponse(f if path and f.is_file() else UI_DIST / "index.html")
+        root = UI_DIST.resolve()
+        f = (root / path).resolve()
+        inside = f == root or root in f.parents  # never serve a file outside ui/dist
+        return FileResponse(f if path and inside and f.is_file() else root / "index.html")

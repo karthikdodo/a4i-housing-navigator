@@ -16,8 +16,9 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PORT=8080
 COPY agent/requirements.txt agent/requirements.txt
 COPY api/requirements.txt api/requirements.txt
-RUN pip install --no-cache-dir -r agent/requirements.txt fastapi "uvicorn[standard]" pydantic
+RUN pip install --no-cache-dir -r agent/requirements.txt fastapi "uvicorn[standard]" pydantic python-multipart
 COPY agent/ agent/
 COPY api/ api/
 COPY --from=ui /src/ui/dist ui/dist
+# Optional: GOOGLE_MAPS_API_KEY (interactive map with pins; without it the keyless Google Maps embed is used)
 CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT}"]

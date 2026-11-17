@@ -244,6 +244,8 @@ Open **http://localhost:5173**. Demo mode shows an orange **Demo replay · not l
 | 7 | Ask *"Draft the intake memo"* | **Memo** tab; review it, then **Mark reviewed** |
 | 8 | Click **Open Tenant Stabilization Brief →** | The printable Brief: evidence, exclusions, statutes, funds, tract, equity audit, what the record cannot prove, memo. **Print / save as PDF** for the attorney. |
 
+**Talk instead of typing:** press the red **mic** in the composer, speak, then **Done**. The clip and its transcript appear in the chat history and the navigator answers; the speaker button in the Conversation bar reads answers aloud. In **New intake**, **Speak the intake** fills the form from one spoken description. **Photos:** use the image button or drop photos on the chat; they are filed as tenant-provided. **Map:** the Location panel shows the block and the cited records. **Layout:** drag any section by its grip; **Reset layout** puts it back.
+
 Click any record id in the chat (blue chip, or orange for an excluded decoy) to jump to it in the panel. New facts mid-conversation ("actually it's the 700 block", "hearing moved to Thursday") re-run the affected searches, and changed cards are tagged **Updated**.
 
 ### What the screen will never claim

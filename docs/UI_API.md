@@ -49,7 +49,7 @@ Every frame is one JSON object. The client picks a `session_id` (kept in `localS
 | `type` | Fields | Effect |
 |---|---|---|
 | `hello` | `session_id` | Server replies with an `a2ui` event holding `createSurface` for all six surfaces, then a `case` event with the transcript. Send on every (re)connect, with a fresh `MessageProcessor`. |
-| `user_message` | `session_id`, `text` | One agent turn. |
+| `user_message` | `session_id`, `text`, `attachments?` (photo upload ids), `voice?` `{id, duration, source}` | One agent turn. Photos go to Gemini as images in live mode and are filed in the case as tenant-provided. |
 | `a2ui_action` | `session_id`, `message` = `{"version": "1.0", "action": {name, surfaceId, sourceComponentId, timestamp, context}}` | An A2UI v1.0 renderer-to-agent action, exactly as the renderer produced it. |
 | `a2ui_error` | `session_id`, `message` | Renderer validation errors; logged. |
 
@@ -62,7 +62,8 @@ Every frame is one JSON object. The client picks a `session_id` (kept in `localS
 | `message` | `text`, `final` | Agent text. Chunks have `final: false`; the `final: true` frame is the **whole** reply: replace the chunks with it. |
 | `brief` | `brief` | Brief JSON (shape in ARCHITECTURE.md + R11–R16). |
 | `case` | `case_id`, `mode`, `transcript` | The open case changed: redraw the chat from `transcript`. |
-| `user_echo` | `text` | A button became a chat question (e.g. **Ask why**): show it as a user bubble. |
+| `user_echo` | `text` | A button became a chat question (e.g. **Ask why**). |
+| `user_turn` | `turn` `{role, text, attachments, voice}` | The user turn as stored: draw the bubble from this (photo thumbnails, voice clip + transcript). |
 | `error` | `text` | Show inline; the turn still ends. |
 | `turn_end` | | Re-enable the composer. |
 
@@ -82,6 +83,10 @@ Every frame is one JSON object. The client picks a `session_id` (kept in `localS
 | `GET /api/sessions/{sid}/cases/{cid}` | Case: facts, brief, memo, transcript |
 | `GET /api/sessions/{sid}/cases/{cid}/brief` | Brief JSON (404 until submitted) |
 | `GET /api/sessions/{sid}/cases/{cid}/memo.md` | Memo download |
+| `POST /api/sessions/{sid}/uploads` (multipart `file`) | `{id, url, kind, name, size, mime}`. Photos: JPEG, PNG, WebP, GIF, HEIC up to 10 MB. Audio: WebM, Ogg, M4A, MP3, WAV up to 15 MB. SVG and other types are refused. |
+| `GET /api/uploads/{id}` | The stored file (`nosniff`, inline) |
+| `POST /api/sessions/{sid}/transcribe` (multipart `audio`, `browser_text`, `duration`) | `{text, source: gemini\|browser\|none, audio: {id, url, duration}}`. Gemini transcribes the clip when it is reachable (live mode, or `A4I_TRANSCRIBE=gemini`); otherwise the browser's live transcript is used. Spoken full names become initials. |
+| `POST /api/sessions/{sid}/intake/voice` `{text}` | `{fields, source, transcript, a2ui}`: the New intake form's fields heard in the transcript, plus the A2UI `updateDataModel` messages that fill the form. Gemini structured output in live mode, rules otherwise. |
 
 ## Surfaces
 
@@ -91,6 +96,7 @@ All surfaces use catalog `https://a4i-housing-navigator.dev/a2ui/v1/navigator_ca
 |---|---|---|---|
 | `intake_queue` | A, left | Today's cases sorted by hearing, **New intake** | `open_case {case_id}`, `open_intake_form`* |
 | `case_header` | B, top | Case line, tract, hearing countdown, 5-step progress, stub warning | — |
+| `case_map` | A, under the queue | Google Map of the tenant's block (red pin) and the cited 311 records (blue pins) | open in Google Maps |
 | `suggested_questions` | B, above composer | 1–4 follow-up chips | `ask {text}` |
 | `case_documents` | C, right | Tabs: Evidence (cards + excluded drawer + boundary note) · Statutes · Funds · Tract · Memo; **Open Brief** button (disabled until a brief exists, via `checks`) | `explain_exclusion {request_id}`, `ask`, `mark_memo_reviewed`, `copy_memo`*, `open_brief`*, fund intake links and memo download via the basic catalog's `openUrl` |
 | `stabilization_brief` | Overlay | The printable Tenant Stabilization Brief | `print_brief`*, `close_brief`* |
@@ -118,12 +124,24 @@ All surfaces use catalog `https://a4i-housing-navigator.dev/a2ui/v1/navigator_ca
 | `MemoView` | `markdown`, `statusLabel`, `variant` |
 | `DocHeader`, `DataTable` | Brief header; read-only table (`columns`, `rows`) |
 | `SimilarityBar` | `value`, `weak` |
+| `IconButton` | `icon` (lucide name: userPlus, copy, download, refresh, checkCircle, fileText, printer, arrowLeft, mapPin, sparkles, …), `label`, `variant` (default · primary · chip), `action`, `enabled`, `block` |
+| `PhotoGallery` | `title`, `note`, `photos[{url, name, caption}]`; hidden when `title` is empty |
+| `MapView` | `address`, `center {lat, lng}`, `markers[{id, label, lat, lng, kind}]`, `apiKey`, `openUrl` |
 
 To add a component: define its API and React view in `catalog.tsx`, add it to `NAVIGATOR_COMPONENTS`, run `npm run catalog:export`, use it in `surfaces.py`, then run the checks below.
 
 ### Version note
 
 The published renderer (`@a2ui/web_core` 0.15.0) validates renderer-side checks under the key **`checks`**; the current v1.0 spec text on GitHub spells it `@checks`. The API sends `checks`, which is what the renderer we ship accepts. Revisit when upgrading `@a2ui/*`.
+
+## Voice, photos, map and layout
+
+- **Voice chat.** The mic in the composer records a clip (MediaRecorder) with a live waveform and, where the browser has the Web Speech API, a live transcript. **Done** uploads the clip to `/transcribe`, then sends the transcript as a chat message with `voice`. The chat history shows the clip (play/pause) above its transcript. The speaker button in the Conversation bar reads replies aloud (browser speech synthesis).
+- **Voice intake.** **New intake → Speak the intake** records the paralegal describing the tenant; `/intake/voice` returns A2UI updates that fill the form for review. Nothing is submitted until they press **Open case & search**.
+- **Photos.** The image button (or dropping files on the chat) uploads tenant photos and sends them with the next message. They appear in the chat, in **Evidence → Tenant-provided photos**, and as a count in the Brief, always labelled tenant-provided, never public record.
+- **Map.** Set `GOOGLE_MAPS_API_KEY` for the Maps JavaScript API (pins, info windows). Without it the panel embeds Google Maps for the block address and lists the pins as links. Pins need `latitude`/`longitude` on evidence rows (R28 in AGENT_REQUIREMENTS.md).
+- **Layout.** Every section has a grip: drag it within or across the three columns (or focus the grip, Space, arrows, Space). The layout is saved in the browser; **Reset layout** in the top bar restores it.
+- **Microphone access** needs `https://` or `localhost`.
 
 ## Checks
 

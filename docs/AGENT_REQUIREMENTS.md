@@ -90,6 +90,14 @@ Status: **Met** = works with the agent on `main` today · **Partial** = works, t
 | R23 | Say "on the tenant's block", never "in her unit", for 311 evidence. Filing counts are always "modeled". | Met |
 | R24 | The agent does not emit A2UI JSON. | By design. If a future feature needs agent-authored UI (for example a free-form checklist), use `a2ui-adk`'s `SendA2uiToClientToolset` on a **separate surface**, never for evidence, statutes or funds. |
 
+### Voice, photos and map
+
+| # | Requirement | Status | Change |
+|---|---|---|---|
+| R28 | Evidence rows carry coordinates for the map. | **Gap** | Add `base.latitude, base.longitude` to the complaints SELECT in `semantic_search`, and keep them in `submit_brief`'s evidence keys. Without them the map shows only the geocoded block. |
+| R29 | Tenant photos are described, never cited as 311 evidence. | Partial | The API sends photos to the agent as image parts with an instruction to describe only what is visible and call them tenant-provided. Add the same rule to the system prompt. |
+| R30 | Spoken messages are normal turns. | Met | The API sends the transcript as the message text; names are already turned into initials. |
+
 ### Runtime
 
 | # | Requirement | Status |
