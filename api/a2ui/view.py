@@ -7,8 +7,10 @@ never interprets raw tool output.
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import date, datetime
+from urllib.parse import quote_plus
 from typing import Any, Optional
 
 from ..cases import TZ, CaseState, now
@@ -375,6 +377,9 @@ def documents_model(c: CaseState) -> dict:
         "excluded": ex,
         "excluded_title": f"Excluded by filter ({len(ex)}): why they can't be used" if searched else "",
         "excluded_open": bool(ex),
+        "photos": [{"url": ph["url"], "name": ph.get("name", "photo"), "caption": ph.get("caption", "")} for ph in c.photos],
+        "photos_title": f"Tenant-provided photos ({len(c.photos)})" if c.photos else "",
+        "photos_note": "From the tenant, not a public record: attach to the DBI complaint and the attorney packet." if c.photos else "",
         "boundary_note": ("**What the public record cannot prove:** 311 rows are redacted to the 100-block. They show the building has "
                           "open hazards, not that *her unit* is cited. Ask for photos, texts to the landlord, and her own DBI complaint number."),
         "statutes": st,
@@ -456,6 +461,8 @@ def brief_model(c: CaseState) -> dict:
         "tract_rows": tract_rows,
         "equity_rows": equity_rows,
         "equity_note": b.get("equity_note") or ("Equity audit not run yet." if not eq else eq.get("baseline", "")),
+        "photos_line": (f"**Tenant-provided photos:** {len(c.photos)} attached in the case file. They show what the tenant "
+                        "photographed; they are not a public record or an inspection finding.") if c.photos else "",
         "cannot_prove": "\n".join(f"- {x}" for x in cannot) or "- 311 records show conditions on the block, not inside this tenant's unit",
         "memo": c.memo_markdown,
         "memo_status": doc["memo"]["status_label"],
@@ -470,4 +477,40 @@ def intake_form_model() -> dict:
     return {
         "form": {"client": "", "block": "", "issue": "", "hearing": "", "notice": ["nonpayment"],
                  "household": "", "ami": ""},
+    }
+
+
+def street_address(block_address: str) -> str:
+    """'600 Block John Muir Dr, San Francisco, CA' / '400 block of Eddy St' -> '600 John Muir Dr, San Francisco, CA'."""
+    addr = re.sub(r"\b(\d+)\s+block\s+(?:of\s+)?", r"\1 ", block_address or "", flags=re.I).strip()
+    if addr and "san francisco" not in addr.lower():
+        addr += ", San Francisco, CA"
+    return addr
+
+
+def map_model(c: CaseState) -> dict:
+    """Where the tenant's block is, with the corroborating 311 records that carry coordinates."""
+    markers, center = [], None
+    for r in c.evidence_rows:
+        lat, lng = r.get("latitude"), r.get("longitude")
+        if lat is None or lng is None:
+            continue
+        on_block = bool(r.get("on_tenant_block"))
+        markers.append({"id": r["request_id"], "lat": float(lat), "lng": float(lng),
+                        "label": f"{r['request_id']} · {short_block(r.get('block_address', ''))}",
+                        "kind": "same_block" if on_block else "nearby"})
+        if on_block and center is None:
+            center = {"lat": float(lat), "lng": float(lng)}
+    addr = street_address(c.block_address)
+    return {
+        "title": short_block(c.block_address) or "No block logged",
+        "meta": "Block level only",
+        "address": addr,
+        "center": center,
+        "markers": markers,
+        "maps_key": os.getenv("GOOGLE_MAPS_API_KEY", ""),
+        "open_url": f"https://www.google.com/maps/search/?api=1&query={quote_plus(addr)}" if addr else "",
+        "note": (f"Red pin: the tenant's block. Blue pins: {len(markers)} open 311 record{'s' if len(markers) != 1 else ''} "
+                 "cited as evidence. 311 data is redacted to the 100-block, so pins mark blocks, not units.")
+                if markers else "Pins for cited 311 records appear after the first search. Addresses are block level only.",
     }

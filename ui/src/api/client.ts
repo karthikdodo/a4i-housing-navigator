@@ -11,11 +11,26 @@ export type ServerEvent =
   | {type: 'a2ui'; messages: unknown[]}
   | {type: 'case'; case_id: string; mode: string; transcript: TranscriptTurn[]}
   | {type: 'user_echo'; text: string}
+  | {type: 'user_turn'; turn: TranscriptTurn}
   | {type: 'turn_end'};
 
-export type TranscriptTurn = {role: 'user' | 'agent' | 'status'; text: string; tool?: string | null; citations?: string[]};
+export type TranscriptTurn = {
+  role: 'user' | 'agent' | 'status';
+  text: string;
+  tool?: string | null;
+  citations?: string[];
+  attachments?: {id: string; url: string; kind: string; name?: string}[];
+  voice?: {id: string; url: string; duration: number; source?: string} | null;
+};
+
+let cachedSid: string | null = null;
 
 export function sessionId(): string {
+  cachedSid ??= readSessionId();
+  return cachedSid;
+}
+
+function readSessionId(): string {
   const key = 'a4i.session';
   try {
     const existing = window.localStorage.getItem(key);
@@ -77,9 +92,6 @@ export class NavigatorSocket {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({session_id: this.sid, ...frame}));
   }
 
-  say(text: string): void {
-    this.send({type: 'user_message', text});
-  }
 
   /** Forward an A2UI v1.0 renderer-to-agent message ({version, action}). */
   action(message: Record<string, unknown>): void {

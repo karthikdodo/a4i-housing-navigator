@@ -13,6 +13,7 @@ Outbound events (JSON, one per WebSocket frame or SSE `data:` line):
   {"type": "a2ui",    "messages": [ ...A2UI v1.0 agent-to-renderer messages... ]}
   {"type": "case",    "case_id", "transcript", "mode"}     the open case changed (redraw chat)
   {"type": "user_echo", "text"}                            a UI action became a chat question
+  {"type": "user_turn", "turn"}                            the user turn as stored (text, photos, voice clip)
   {"type": "turn_end"}
 """
 
@@ -25,7 +26,8 @@ from typing import Any, AsyncIterator, Optional
 
 from .a2ui import surfaces as S
 from .a2ui import view as V
-from .cases import CaseState, ChatTurn, demo_queue, new_case_id
+from .cases import CaseState, ChatTurn, demo_queue, new_case_id, now
+from .media import get_upload
 from .runners import AgentEvent
 
 log = logging.getLogger(__name__)
@@ -71,6 +73,7 @@ class Workspace:
         return {
             S.QUEUE: V.queue_model(self.cases, self.active_id),
             S.HEADER: V.header_model(c),
+            S.MAP: V.map_model(c),
             S.SUGGESTIONS: V.suggestions_model(c),
             S.DOCUMENTS: docs,
             S.BRIEF: V.brief_model(c),
@@ -81,7 +84,7 @@ class Workspace:
         """createSurface for every surface: what a freshly connected renderer needs."""
         return [S.create_surface(sid, model) for sid, model in self.models().items()]
 
-    def updates(self, surface_ids: tuple[str, ...] = (S.QUEUE, S.HEADER, S.SUGGESTIONS, S.DOCUMENTS, S.BRIEF)) -> dict:
+    def updates(self, surface_ids: tuple[str, ...] = (S.QUEUE, S.HEADER, S.MAP, S.SUGGESTIONS, S.DOCUMENTS, S.BRIEF)) -> dict:
         m = self.models()
         return {"type": "a2ui", "messages": [S.update_data_model(sid, m[sid]) for sid in surface_ids]}
 
@@ -93,21 +96,36 @@ class Workspace:
     async def connect(self) -> list[dict]:
         return [{"type": "a2ui", "messages": self.snapshot()}, self.case_event()]
 
-    async def user_message(self, text: str, echo: bool = False) -> AsyncIterator[dict]:
+    async def user_message(self, text: str, echo: bool = False, attachments: Optional[list[str]] = None,
+                           voice: Optional[dict] = None) -> AsyncIterator[dict]:
+        """One chat turn. `attachments` = upload ids of photos; `voice` = {id, duration, source} of the
+        recorded clip the text was transcribed from (shown with the transcript in the chat history)."""
         text = (text or "").strip()
-        if not text:
+        photos = self._resolve_photos(attachments or [])
+        if not text and not photos:
             return
+        if not text:
+            text = f"I've attached {len(photos)} photo{'s' if len(photos) != 1 else ''} from the tenant."
+        voice_turn = self._resolve_voice(voice)
         async with self.lock:
             c = self.case
             c.begin_turn()
-            c.transcript.append(ChatTurn("user", text))
+            turn = ChatTurn("user", text, attachments=photos, voice=voice_turn)
+            c.transcript.append(turn)
+            for ph in photos:
+                if ph["id"] not in {p["id"] for p in c.photos}:
+                    c.photos.append({**ph, "added_at": now().isoformat()})
             if echo:
                 yield {"type": "user_echo", "text": text}
+            yield {"type": "user_turn", "turn": turn.to_json()}
+            if photos:
+                yield self.updates((S.DOCUMENTS, S.BRIEF))
             reply = ""
             before = list(c.suggestions)
             adk_session = f"{self.session_id}:{c.case_id}"
             try:
-                async for ev in self.runner.run(self.session_id, adk_session, self._with_case_context(c, text), c):
+                async for ev in self.runner.run(self.session_id, adk_session, self._with_case_context(c, text), c,
+                                                attachments=photos):
                     for out in self._on_agent_event(c, ev):
                         yield out
                     if ev.kind == "message" and ev.final:
@@ -156,6 +174,40 @@ class Workspace:
                 yield out
         else:
             yield {"type": "error", "text": f"Unknown action {name!r}"}
+
+    # ------------------------------------------------------------------ voice + photos
+    def _resolve_photos(self, ids: list[str]) -> list[dict]:
+        out = []
+        for uid in ids[:6]:
+            try:
+                up, _ = get_upload(str(uid))
+            except FileNotFoundError:
+                continue
+            if up.kind == "image":
+                out.append({"id": up.id, "url": up.url, "kind": "image", "name": up.name, "mime": up.mime})
+        return out
+
+    def _resolve_voice(self, voice: Optional[dict]) -> Optional[dict]:
+        if not voice or not voice.get("id"):
+            return None
+        try:
+            up, _ = get_upload(str(voice["id"]))
+        except FileNotFoundError:
+            return None
+        if up.kind != "audio":
+            return None
+        return {"id": up.id, "url": up.url, "duration": float(voice.get("duration") or 0),
+                "source": str(voice.get("source") or "")}
+
+    def intake_form_patch(self, fields: dict) -> dict:
+        """A2UI updateDataModel messages that fill the New intake form with fields heard by voice."""
+        msgs = []
+        for key in ("client", "block", "issue", "hearing", "household", "ami"):
+            if fields.get(key):
+                msgs.append(S.update_data_model(S.INTAKE_FORM, str(fields[key]), f"/form/{key}"))
+        if fields.get("notice"):
+            msgs.append(S.update_data_model(S.INTAKE_FORM, [fields["notice"]], "/form/notice"))
+        return {"type": "a2ui", "messages": msgs}
 
     # ------------------------------------------------------------------ internals
     def _with_case_context(self, c: CaseState, text: str) -> str:
@@ -237,7 +289,7 @@ class Workspace:
         )
         self.cases[c.case_id] = c
         self.active_id = c.case_id
-        yield self.updates((S.QUEUE, S.HEADER, S.SUGGESTIONS, S.DOCUMENTS, S.BRIEF, S.INTAKE_FORM))
+        yield self.updates(S.SURFACES)
         yield self.case_event()
         async for out in self.user_message(f"New intake. {issue.rstrip('.')}. Are there open residential complaints on this block?", echo=True):
             yield out

@@ -842,6 +842,26 @@
         "meta": {
           "$ref": "common_types.json#/$defs/DynamicString",
           "description": "Represents a string"
+        },
+        "icon": {
+          "type": "string",
+          "enum": [
+            "userPlus",
+            "users",
+            "sparkles",
+            "copy",
+            "download",
+            "refresh",
+            "checkCircle",
+            "fileText",
+            "printer",
+            "arrowLeft",
+            "mapPin",
+            "mic",
+            "image",
+            "send",
+            "externalLink"
+          ]
         }
       },
       "required": [
@@ -1576,6 +1596,123 @@
         "rows"
       ],
       "unevaluatedProperties": false
+    },
+    "IconButton": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "const": "IconButton"
+        },
+        "icon": {
+          "type": "string",
+          "enum": [
+            "userPlus",
+            "users",
+            "sparkles",
+            "copy",
+            "download",
+            "refresh",
+            "checkCircle",
+            "fileText",
+            "printer",
+            "arrowLeft",
+            "mapPin",
+            "mic",
+            "image",
+            "send",
+            "externalLink"
+          ]
+        },
+        "label": {
+          "$ref": "common_types.json#/$defs/DynamicString",
+          "description": "Represents a string"
+        },
+        "variant": {
+          "type": "string",
+          "enum": [
+            "default",
+            "primary",
+            "chip"
+          ]
+        },
+        "action": {
+          "$ref": "common_types.json#/$defs/Action",
+          "description": "Defines an interaction handler that can either trigger an agent-side event or execute a local renderer-side function."
+        },
+        "enabled": {
+          "$ref": "common_types.json#/$defs/DynamicBoolean",
+          "description": "A boolean value that can be a literal, a path, or a function call returning a boolean or a validation result object (coerced to its 'valid' boolean)."
+        },
+        "block": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "component",
+        "icon",
+        "label",
+        "action"
+      ],
+      "unevaluatedProperties": false
+    },
+    "PhotoGallery": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "const": "PhotoGallery"
+        },
+        "title": {
+          "$ref": "common_types.json#/$defs/DynamicString",
+          "description": "Represents a string"
+        },
+        "note": {
+          "$ref": "common_types.json#/$defs/DynamicString",
+          "description": "Represents a string"
+        },
+        "photos": {
+          "$ref": "common_types.json#/$defs/DynamicValue",
+          "description": "A value that can be a literal, a path, or a function call returning any type."
+        }
+      },
+      "required": [
+        "component",
+        "title",
+        "photos"
+      ],
+      "unevaluatedProperties": false
+    },
+    "MapView": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "const": "MapView"
+        },
+        "address": {
+          "$ref": "common_types.json#/$defs/DynamicString",
+          "description": "Represents a string"
+        },
+        "center": {
+          "$ref": "common_types.json#/$defs/DynamicValue",
+          "description": "A value that can be a literal, a path, or a function call returning any type."
+        },
+        "markers": {
+          "$ref": "common_types.json#/$defs/DynamicValue",
+          "description": "A value that can be a literal, a path, or a function call returning any type."
+        },
+        "apiKey": {
+          "$ref": "common_types.json#/$defs/DynamicString",
+          "description": "Represents a string"
+        },
+        "openUrl": {
+          "$ref": "common_types.json#/$defs/DynamicString",
+          "description": "Represents a string"
+        }
+      },
+      "required": [
+        "component",
+        "address"
+      ],
+      "unevaluatedProperties": false
     }
   },
   "functions": {
@@ -2190,6 +2327,15 @@
         },
         {
           "$ref": "#/components/DataTable"
+        },
+        {
+          "$ref": "#/components/IconButton"
+        },
+        {
+          "$ref": "#/components/PhotoGallery"
+        },
+        {
+          "$ref": "#/components/MapView"
         }
       ],
       "discriminator": {
@@ -2244,5 +2390,5 @@
     }
   },
   "title": "Stabilization Navigator catalog",
-  "description": "A2UI v1.0 basic catalog plus the Tenant Stabilization Navigator components (Badge, SectionTitle, Callout, Wrap, Grid, Collapsible, PanelTabs, CaseHeader, DeadlineCard, StepTracker, QueueItem, SimilarityBar, RecordCard, ExcludedCard, StatuteCard, FundCard, StatTile, MemoView, DocHeader, DataTable). Implemented by ui/src/a2ui/catalog.tsx."
+  "description": "A2UI v1.0 basic catalog plus the Tenant Stabilization Navigator components (Badge, SectionTitle, Callout, Wrap, Grid, Collapsible, PanelTabs, CaseHeader, DeadlineCard, StepTracker, QueueItem, SimilarityBar, RecordCard, ExcludedCard, StatuteCard, FundCard, StatTile, MemoView, DocHeader, DataTable, IconButton, PhotoGallery, MapView). Implemented by ui/src/a2ui/catalog.tsx."
 }

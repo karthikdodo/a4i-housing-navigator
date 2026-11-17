@@ -71,14 +71,25 @@ class LiveRunner:
         self.status_text = {**STATUS_TEXT, **TOOL_STATUS_TEXT}
         self.runner = InMemoryRunner(agent=root_agent, app_name="navigator")
 
-    async def run(self, user_id: str, session_id: str, text: str, case: CaseState) -> AsyncIterator[AgentEvent]:
+    async def run(self, user_id: str, session_id: str, text: str, case: CaseState,
+                  attachments: Optional[list[dict]] = None) -> AsyncIterator[AgentEvent]:
         from google.genai import types
+
+        from .media import get_upload
 
         svc = self.runner.session_service
         if await svc.get_session(app_name="navigator", user_id=user_id, session_id=session_id) is None:
             await svc.create_session(app_name="navigator", user_id=user_id, session_id=session_id)
 
-        message = types.Content(role="user", parts=[types.Part(text=text)])
+        parts = [types.Part(text=text)]
+        for ph in attachments or []:  # tenant photos go to Gemini as images
+            up, path = get_upload(ph["id"])
+            parts.append(types.Part.from_bytes(data=path.read_bytes(), mime_type=up.mime))
+        if attachments:
+            parts.append(types.Part(text=(
+                "The photos above were taken by the tenant. Describe only what is visible, say they are "
+                "tenant-provided and not a public record or inspection finding, and never cite them as 311 evidence.")))
+        message = types.Content(role="user", parts=parts)
         pending_args: dict[str, dict] = {}
         async for event in self.runner.run_async(
             user_id=user_id, session_id=session_id, new_message=message,
@@ -178,9 +189,20 @@ class MockRunner:
             "stub_tools": [],
         }
 
-    async def run(self, user_id: str, session_id: str, text: str, case: CaseState) -> AsyncIterator[AgentEvent]:
+    async def run(self, user_id: str, session_id: str, text: str, case: CaseState,
+                  attachments: Optional[list[dict]] = None) -> AsyncIterator[AgentEvent]:
         t = text.lower()
         fx = self.fx
+        if attachments:
+            n = len(attachments)
+            async for e in self._say(
+                f"Added **{n} tenant photo{'s' if n != 1 else ''}** to the case file (Evidence tab, under the 311 records). "
+                "In demo mode I can't look at images; with the live agent, Gemini describes what is visible. "
+                "Photos are tenant-provided, not a public record: attach them to her own DBI complaint and the "
+                "attorney packet, because they help close the gap between the block record and **her unit**."):
+                yield e
+            case.suggestions = ["Draft the intake memo"] if case.matches else ["Any open residential complaints on her block?"]
+            return
         if case.case_id != "INT-1142" and "fixture" not in t:
             async for e in self._say(
                 f"Demo mode only has recorded data for INT-1142 (600 Block John Muir Dr). For {case.case_id} I would "

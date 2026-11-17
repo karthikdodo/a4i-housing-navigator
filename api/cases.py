@@ -36,9 +36,12 @@ class ChatTurn:
     text: str
     tool: Optional[str] = None
     citations: list[str] = field(default_factory=list)
+    attachments: list[dict] = field(default_factory=list)  # [{id, url, kind, name}] photos sent with the message
+    voice: Optional[dict] = None  # {id, url, duration, source} when the message was spoken
 
     def to_json(self) -> dict:
-        return {"role": self.role, "text": self.text, "tool": self.tool, "citations": self.citations}
+        return {"role": self.role, "text": self.text, "tool": self.tool, "citations": self.citations,
+                "attachments": self.attachments, "voice": self.voice}
 
 
 @dataclass
@@ -66,6 +69,7 @@ class CaseState:
     tract: Optional[dict] = None
     equity: Optional[dict] = None
     brief: Optional[dict] = None
+    photos: list[dict] = field(default_factory=list)  # tenant-provided, not a public record
     tools_run: set[str] = field(default_factory=set)
     stub_tools: set[str] = field(default_factory=set)
 
@@ -222,6 +226,7 @@ class CaseState:
             "brief": self.brief,
             "transcript": [t.to_json() for t in self.transcript],
             "suggestions": self.suggestions,
+            "photos": self.photos,
         }
 
 

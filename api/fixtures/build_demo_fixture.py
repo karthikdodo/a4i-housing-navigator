@@ -55,6 +55,8 @@ def main() -> None:
             "closed_date": None,
             "narrative": r.complaint_narrative[:600],
             "data_provenance": r.data_provenance,
+            "latitude": round(float(r.latitude), 6),
+            "longitude": round(float(r.longitude), 6),
             "similarity": sim,
             "on_tenant_block": rid in ON_BLOCK,
             "planted_decoy": False,

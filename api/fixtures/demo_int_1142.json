@@ -16,6 +16,8 @@
           "closed_date": null,
           "narrative": "Date last observed: 31-oct-26; floor: f 4th floo; dwelling unit: outside f4; exact location: main bldg; building type: residence/dwelling water intrusion; plumbing leak; mold; other housing; ; additional information: mold/water under floor boards outside f418;",
           "data_provenance": "Public: SF Department of Building Inspection Complaints (data.sfgov.org gm2e-bten, 100-block redacted)",
+          "latitude": 37.716231,
+          "longitude": -122.497365,
           "similarity": 0.86,
           "on_tenant_block": true,
           "planted_decoy": false
@@ -31,6 +33,8 @@
           "closed_date": null,
           "narrative": "Has damaged ceiling and walls (holes) in the bathroom and mold in the bathroom, bedroom and living room.",
           "data_provenance": "Public: SF Department of Building Inspection Complaints (data.sfgov.org gm2e-bten, 100-block redacted)",
+          "latitude": 37.716217,
+          "longitude": -122.478705,
           "similarity": 0.81,
           "on_tenant_block": false,
           "planted_decoy": false
@@ -46,6 +50,8 @@
           "closed_date": null,
           "narrative": "Hot water is over 137.9 degrees",
           "data_provenance": "Public: SF Department of Building Inspection Complaints (data.sfgov.org gm2e-bten, 100-block redacted)",
+          "latitude": 37.717799,
+          "longitude": -122.480935,
           "similarity": 0.64,
           "on_tenant_block": false,
           "planted_decoy": false
