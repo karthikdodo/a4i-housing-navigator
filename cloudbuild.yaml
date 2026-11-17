@@ -1,0 +1,87 @@
+# Continuous deployment: every push to main -> test -> build -> deploy to Cloud Run -> smoke test.
+#
+# Triggered by the Cloud Build trigger "deploy-main" (branch ^main$, this file). To deploy
+# without a code change, use "Run" on that trigger in the Console (SHORT_SHA is set by triggers).
+#
+# One Cloud Run service serves the UI, the API and the agent (see infra/Dockerfile).
+# Every deploy restarts the service and drops in-memory conversations: disable the trigger
+# (Cloud Build > Triggers) before recording the demo.
+
+substitutions:
+  _REGION: us-central1
+  _SERVICE: navigator
+  _REPO: cloud-run-source-deploy
+  _RUNTIME_SA: navigator-runtime
+  _MULTI_AGENT: "true"          # "false" = faster single navigator agent
+
+steps:
+  # 1. Tests (mock agent, no GCP). Also imports the live agent so a broken tool file fails here.
+  - id: test
+    name: python:3.12-slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        pip install -q --no-cache-dir -r agent/requirements.txt -r api/requirements.txt
+        python -m pytest api/tests -q
+        PYTHONPATH=agent python -c "import navigator.agent as a, navigator.tools as t; \
+          stubs=[n for n in ('match_fund','tract_context','equity_audit') if getattr(t,n).__module__.endswith('_stubs')]; \
+          assert not stubs, f'stub tools in build: {stubs}'; print('agent ok:', a.root_agent.name)"
+
+  # 2. Build the image (stage 1 builds the React UI, stage 2 the Python API + agent).
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args: [build, -f, infra/Dockerfile,
+           -t, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA",
+           -t, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest", .]
+    waitFor: [test]
+
+  # 3. Push both tags.
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: [push, --all-tags, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}"]
+
+  # 4. Deploy. min=max=1: ADK sessions live in memory, so every request must hit one instance.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+      - --region=${_REGION}
+      - --service-account=${_RUNTIME_SA}@$PROJECT_ID.iam.gserviceaccount.com
+      - --allow-unauthenticated
+      - --min-instances=1
+      - --max-instances=1
+      - --timeout=3600
+      - --memory=1Gi
+      - --cpu=1
+      - --port=8080
+      - --set-env-vars=A4I_AGENT_MODE=live,A4I_MULTI_AGENT=${_MULTI_AGENT}
+      - --labels=managed-by=cloud-build,commit=$SHORT_SHA
+
+  # 5. Smoke test: the new revision must be up and running the live agent.
+  - id: smoke
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        URL=$(gcloud run services describe ${_SERVICE} --region=${_REGION} --format='value(status.url)')
+        echo "Service: $$URL"
+        curl -fsS "$$URL/health" | tee /dev/stderr | grep -q '"agent_mode":"live"'
+        curl -fsS -o /dev/null "$$URL/" && echo "UI ok"
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY   # required when the trigger runs as a user-specified service account
+  machineType: E2_HIGHCPU_8     # UI + Python builds in ~3 min instead of ~6
+
+timeout: 1500s
