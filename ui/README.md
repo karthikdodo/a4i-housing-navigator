@@ -1,24 +1,34 @@
-# ui/ — Intake chat + Stabilization Brief
+# ui/ — Case workspace (React + A2UI)
 
-**Owner:** Selvan · **Branch:** `ui` · **Contract:** [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md#websocket-contract)
+**Owner:** Selvan · **Branch:** `ui` · **Reference:** [`docs/UI_API.md`](../docs/UI_API.md) · **Design:** the UI design canvas (Spec, Main, Brief artboards)
 
-The screen a paralegal uses: chat on the left, the Tenant Stabilization Brief card on the right.
+The paralegal's screen, built on Google's **A2UI** protocol (v1.0) with the official React renderer (`@a2ui/react`, `@a2ui/web_core`):
 
-## What the screen shows
+- **Zone A** intake queue · **Zone B** case header, chat with tool traces and citation chips, suggested questions · **Zone C** Evidence / Statutes / Funds / Tract / Memo tabs · **Brief** overlay (print to PDF) · **New intake** form.
+- Every panel except the chat is an A2UI surface the API sends. Buttons inside them send A2UI `action` messages back.
+- `src/a2ui/catalog.tsx` is the navigator catalog: the A2UI basic catalog plus domain components (RecordCard, ExcludedCard, FundCard, StatTile, …) that carry the design's trust rules (excluded records show the failing field, modeled numbers get the violet tag, status is never color alone).
 
-- **Chat panel:** user messages, agent replies (`message` events), and a live status line (`status` events, e.g. "Searching 311 records…").
-- **Brief card** (from the `brief` event):
-  - Case summary: block, hazards, hearing date
-  - Corroborating 311 records with similarity scores
-  - **Excluded records and why.** Keep this visible: it's the decoy-catching moment for judges.
-  - Statute citations
-  - Funds: eligible or not, with the reason and intake link
-  - Tract context + equity note
-  - "What this record can't prove"
-  - Intake memo, with a copy or download button
+## Run
 
-## Start now, without the backend
+```bash
+npm install
+npm run dev            # http://localhost:5173 (API on :8080: `A4I_AGENT_MODE=mock uvicorn api.main:app --port 8080`)
+npm run build          # ui/dist, served by the API at /
+npm run validate:a2ui  # after `python -m pytest api/tests`: validates the API's A2UI messages
+npm run catalog:export # after changing catalog.tsx: rewrites api/a2ui/navigator_catalog.json
+```
 
-Build against a mock of the brief JSON in [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md#brief-json-draft--sid-owns-the-final-version). Swap in `ws://localhost:8080/ws`, then the Cloud Run URL at T+2:30.
+## Layout
 
-Fallback if time runs short: `adk web` (it works out of the box, but looks like a developer tool). Be ready to say why we chose the UI we did.
+```
+src/
+  App.tsx                 three-zone shell, chat, overlays
+  api/client.ts           WebSocket client (reconnect, session id)
+  a2ui/useNavigator.ts    MessageProcessor <-> WebSocket; local vs server actions
+  a2ui/catalog.tsx        navigator A2UI catalog (basic v1.0 + 20 components)
+  a2ui/markdown.ts        markdown-it + DOMPurify; record ids -> citation chips
+  styles.css              design tokens (IBM Plex, blue/orange/red/green/violet tones)
+scripts/
+  validate-a2ui.ts        API messages -> real A2UI renderer core
+  export-catalog.ts       catalog.tsx -> api/a2ui/navigator_catalog.json
+```

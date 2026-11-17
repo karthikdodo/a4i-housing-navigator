@@ -1,0 +1,245 @@
+{
+  "case_id": "INT-1142",
+  "tool_results": {
+    "complaints": {
+      "backend": "replay",
+      "corpus": "complaints",
+      "matches": [
+        {
+          "request_id": "SF-202665044",
+          "block_address": "600 Block John Muir Dr, San Francisco, CA",
+          "census_tract_geoid": "06075033204",
+          "property_type": "Residential",
+          "raw_complaint_type": "HOUSING INSPECTION SERVICES",
+          "inspection_status": "Open - Active DBI Case",
+          "created_date": "2026-11-02",
+          "closed_date": null,
+          "narrative": "Date last observed: 31-oct-26; floor: f 4th floo; dwelling unit: outside f4; exact location: main bldg; building type: residence/dwelling water intrusion; plumbing leak; mold; other housing; ; additional information: mold/water under floor boards outside f418;",
+          "data_provenance": "Public: SF Department of Building Inspection Complaints (data.sfgov.org gm2e-bten, 100-block redacted)",
+          "similarity": 0.86,
+          "on_tenant_block": true,
+          "planted_decoy": false
+        },
+        {
+          "request_id": "SF-202665131",
+          "block_address": "500 Block Gonzalez Dr, San Francisco, CA",
+          "census_tract_geoid": "06075033203",
+          "property_type": "Residential",
+          "raw_complaint_type": "HOUSING INSPECTION SERVICES",
+          "inspection_status": "Open - Active DBI Case",
+          "created_date": "2026-11-02",
+          "closed_date": null,
+          "narrative": "Has damaged ceiling and walls (holes) in the bathroom and mold in the bathroom, bedroom and living room.",
+          "data_provenance": "Public: SF Department of Building Inspection Complaints (data.sfgov.org gm2e-bten, 100-block redacted)",
+          "similarity": 0.81,
+          "on_tenant_block": false,
+          "planted_decoy": false
+        },
+        {
+          "request_id": "SF-202665071",
+          "block_address": "700 Block Gonzalez Dr, San Francisco, CA",
+          "census_tract_geoid": "06075033204",
+          "property_type": "Residential",
+          "raw_complaint_type": "HOUSING INSPECTION SERVICES",
+          "inspection_status": "Open - Active DBI Case",
+          "created_date": "2026-11-02",
+          "closed_date": null,
+          "narrative": "Hot water is over 137.9 degrees",
+          "data_provenance": "Public: SF Department of Building Inspection Complaints (data.sfgov.org gm2e-bten, 100-block redacted)",
+          "similarity": 0.64,
+          "on_tenant_block": false,
+          "planted_decoy": false
+        }
+      ],
+      "excluded": [
+        {
+          "request_id": "DECOY-SANF-05",
+          "reason": "Case closed (Closed - Abated, 2026-07-09)",
+          "similarity": 0.89,
+          "block_address": "500 Block Example Teaching Way [Planted Case], San Francisco, CA",
+          "raw_complaint_type": "MOLD & WATER LEAK",
+          "inspection_status": "Closed - Abated",
+          "property_type": "Residential",
+          "closed_date": "2026-07-09",
+          "narrative": "Prior bathroom ceiling collapse and black mold growth behind drywall; licensed remediation completed and case closed.",
+          "planted_decoy": true
+        },
+        {
+          "request_id": "DECOY-SANF-02",
+          "reason": "Commercial property",
+          "similarity": 0.84,
+          "block_address": "200 Block Example Teaching Way [Planted Case], San Francisco, CA",
+          "raw_complaint_type": "COMMERCIAL MOLD / PLUMBING",
+          "inspection_status": "Open - Notice Issued",
+          "property_type": "Commercial",
+          "closed_date": null,
+          "narrative": "Severe black mold, backed-up grease trap sewage, and exposed electrical conduit in ground-floor commercial restaurant kitchen.",
+          "planted_decoy": true
+        },
+        {
+          "request_id": "DECOY-SANF-01",
+          "reason": "Commercial property",
+          "similarity": 0.78,
+          "block_address": "100 Block Example Teaching Way [Planted Case], San Francisco, CA",
+          "raw_complaint_type": "COMMERCIAL HVAC / BOILER",
+          "inspection_status": "Open - Notice Issued",
+          "property_type": "Commercial",
+          "closed_date": null,
+          "narrative": "Emergency boiler shutdown, no heat, and ceiling water leak inside commercial retail warehouse storefront; zero residential tenants.",
+          "planted_decoy": true
+        },
+        {
+          "request_id": "DECOY-SANF-07",
+          "reason": "Inspector found no violation",
+          "similarity": 0.71,
+          "block_address": "700 Block Example Teaching Way [Planted Case], San Francisco, CA",
+          "raw_complaint_type": "PROACTIVE HABITABILITY CHECK",
+          "inspection_status": "Closed - No Violation",
+          "property_type": "Residential",
+          "closed_date": "2026-08-22",
+          "narrative": "Proactive winter readiness inspection: heating boiler operating at 71F, hot water at 122F, no mold, no leaks, and zero habitability defects found.",
+          "planted_decoy": true
+        }
+      ],
+      "on_block_match_count": 1
+    },
+    "statutes": {
+      "backend": "replay",
+      "corpus": "statutes",
+      "matches": [
+        {
+          "statute_section_id": "STAT-CA-01",
+          "jurisdiction": "State of California",
+          "code_citation": "Cal. Civ. Code § 1941.1 & § 1942.4",
+          "ordinance_title": "California Implied Warranty of Habitability & Rent Demand Bar",
+          "text": "Bars landlords from demanding rent, increasing rent, or serving a 3-day pay-or-quit notice when an official building/housing citation for untenantable residential conditions (missing heat, hot water, weatherproofing, plumbing, or safe wiring) remains unabated past 35 days.",
+          "data_provenance": "Public Statutory & Program Policy Text: Summarized Municipal/State Ordinances & Relief Guidelines (2025-2026)",
+          "similarity": 0.83
+        },
+        {
+          "statute_section_id": "STAT-CA-03",
+          "jurisdiction": "State of California",
+          "code_citation": "Cal. Civ. Code § 1942.5",
+          "ordinance_title": "California Statutory Anti-Retaliation Protection",
+          "text": "Establishes a 180-day statutory bar against retaliatory eviction, rent hikes, or service reductions after a residential tenant complains to a municipal building inspection agency.",
+          "data_provenance": "Public Statutory & Program Policy Text: Summarized Municipal/State Ordinances & Relief Guidelines (2025-2026)",
+          "similarity": 0.74
+        },
+        {
+          "statute_section_id": "STAT-CA-02",
+          "jurisdiction": "City and County of San Francisco",
+          "code_citation": "SF Admin. Code Ch. 37 & Prop F",
+          "ordinance_title": "San Francisco Rent Ordinance Just Cause & Universal Right to Counsel",
+          "text": "Requires enumerated just cause for residential eviction, caps annual rent adjustments on covered units, and guarantees city-funded legal representation within 30 days of unlawful detainer service.",
+          "data_provenance": "Public Statutory & Program Policy Text: Summarized Municipal/State Ordinances & Relief Guidelines (2025-2026)",
+          "similarity": 0.69
+        }
+      ]
+    },
+    "match_fund": {
+      "funds": [
+        {
+          "bulletin_id": "BUL-CA-02",
+          "program_name": "Proposition F Tenant Right to Counsel & Habitability Defense",
+          "administering_agency": "Eviction Defense Collaborative",
+          "eligible": false,
+          "fit": "likely",
+          "why": "Residential; open DBI habitability case on her block (SF-202665044). Confirm a unit-level DBI complaint.",
+          "missing_inputs": [
+            "unit_dbi_complaint"
+          ],
+          "requires_open_habitability_case": true,
+          "residential_tenants_only": true,
+          "intake_url": "https://evictiondefense.org",
+          "bulletin_text": "Pairs full unlawful detainer legal representation with habitability rent-abatement motions and up to $6,000 in stipulation bridges for residential tenants with an active open Department of Building Inspection habitability complaint."
+        },
+        {
+          "bulletin_id": "BUL-CA-01",
+          "program_name": "San Francisco Emergency Rental Assistance Program (SF ERAP)",
+          "administering_agency": "San Francisco Mayor's Office of Housing and Community Development",
+          "eligible": false,
+          "fit": "needs_info",
+          "why": "No open case required. Eligible if household is at or below 80% AMI (priority at or below 30%).",
+          "missing_inputs": [
+            "income_pct_ami"
+          ],
+          "requires_open_habitability_case": false,
+          "residential_tenants_only": true,
+          "intake_url": "https://sf.gov/renthelp",
+          "bulletin_text": "Covers up to $12,000 across six months of residential rental arrears or move-in deposits for San Francisco renter households at or below 80% of Area Median Income (AMI), prioritizing families <=30% AMI."
+        },
+        {
+          "bulletin_id": "BUL-CA-04",
+          "program_name": "Code Enforcement Relocation & Mold Remediation Bridge",
+          "administering_agency": "SF Department of Building Inspection Tenant Relocation Fund",
+          "eligible": false,
+          "fit": "conditional",
+          "why": "Requires an open, un-abated DBI notice on her unit. The block record is not her unit: file a 311/DBI complaint today.",
+          "missing_inputs": [
+            "unit_dbi_complaint"
+          ],
+          "requires_open_habitability_case": true,
+          "residential_tenants_only": true,
+          "intake_url": "https://sf.gov/dbi",
+          "bulletin_text": "Provides temporary hotel/relocation stipends up to $8,500 exclusively for residential apartment tenants whose unit has an open un-abated DBI notice for no heat, raw sewage, or toxic mold."
+        },
+        {
+          "bulletin_id": "BUL-CA-03",
+          "program_name": "RadCo / Mission Economic Development Family Stabilization Grant",
+          "administering_agency": "MEDA San Francisco",
+          "eligible": false,
+          "fit": "needs_info",
+          "why": "At or below 60% AMI and acute medical leave or wage loss. Neither is known yet.",
+          "missing_inputs": [
+            "income_pct_ami",
+            "wage_loss_or_medical_leave"
+          ],
+          "requires_open_habitability_case": false,
+          "residential_tenants_only": true,
+          "intake_url": "https://medasf.org",
+          "bulletin_text": "Awards up to $7,500 in back-rent and PG&E utility shutoff prevention for low-income residential families <=60% AMI experiencing acute medical leave or wage loss."
+        }
+      ]
+    },
+    "tract_context": {
+      "census_tract_geoid": "06075033204",
+      "severe_rent_burden_pct": 30.3,
+      "metro_severe_rent_burden_pct": 17.5,
+      "annual_filings_modeled": 69,
+      "annual_filings_percentile": 88,
+      "median_claimed_arrears_usd": 5945,
+      "arrears_quarter": "2026-Q2",
+      "poverty_rate_pct": 23.7,
+      "metro_poverty_rate_pct": 12.2
+    },
+    "equity_audit": {
+      "census_tract_geoids": [
+        "06075033204"
+      ],
+      "used_in_ranking": false,
+      "rows": [
+        {
+          "group": "Hispanic",
+          "tract_pct": 28.0,
+          "metro_pct": 11.7
+        },
+        {
+          "group": "Black",
+          "tract_pct": 9.1,
+          "metro_pct": 4.2
+        },
+        {
+          "group": "Asian",
+          "tract_pct": 26.5,
+          "metro_pct": 28.2
+        },
+        {
+          "group": "White",
+          "tract_pct": 29.0,
+          "metro_pct": 49.1
+        }
+      ],
+      "baseline": "Unweighted mean across San Francisco tracts"
+    }
+  }
+}
