@@ -76,7 +76,7 @@ from google.adk.agents.readonly_context import ReadonlyContext
 
 from . import config
 from .brief import add_equity_note, remember_tool_results, submit_brief
-from .prompts import build_system_prompt
+from .prompts import build_coordinator_prompt, build_system_prompt
 from .tools import (
     equity_audit,
     locate_block,
@@ -87,6 +87,8 @@ from .tools import (
 )
 
 # Status line the UI shows while each tool runs (api/ sends it as a `status` event).
+# In multi-agent mode the UI sees the coordinator's calls only: specialists' inner tool
+# calls are not streamed, so each specialist gets one status line covering its work.
 TOOL_STATUS_TEXT = {
     "resolve_date": "Working out the date…",
     "semantic_search": "Searching 311 records, statutes, and funds…",
@@ -99,37 +101,69 @@ TOOL_STATUS_TEXT = {
     "list_table_ids": "Looking up BigQuery tables…",
     "get_table_info": "Reading a table schema…",
     "execute_sql_readonly": "Querying BigQuery…",
+    # specialist agents (multi-agent mode)
+    "evidence_researcher": "Evidence researcher: searching 311 records, statutes, and the tenant's tract…",
+    "equity_auditor": "Equity auditor: running the post-brief audit…",
+    "data_analyst": "Data analyst: querying BigQuery…",
 }
 
-tools = [
-    resolve_date,
-    semantic_search,
-    locate_block,
-    match_fund,
-    tract_context,
-    submit_brief,
-    equity_audit,
-    add_equity_note,
-]
-before_tool_callback = None
-if config.ENABLE_BQ_MCP:
-    from .bq_mcp import bigquery_mcp_toolset, block_audit_columns_before_brief
 
-    tools.append(bigquery_mcp_toolset())
-    before_tool_callback = block_audit_columns_before_brief
-
-def instruction(_ctx: ReadonlyContext) -> str:
-    """Rebuilt every turn so the model always knows today's date."""
-    today = datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%A, %Y-%m-%d")
-    return build_system_prompt(config.PROJECT, config.DATASET, today)
+def _today() -> str:
+    return datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%A, %Y-%m-%d")
 
 
-root_agent = Agent(
-    name="navigator",
-    model=config.MODEL,
-    description="Builds a Tenant Stabilization Brief for a San Francisco eviction-defense intake.",
-    instruction=instruction,
-    tools=tools,
-    before_tool_callback=before_tool_callback,
-    after_tool_callback=remember_tool_results,
-)
+def _single_agent() -> Agent:
+    """Original design: one agent with every tool."""
+    tools = [
+        resolve_date,
+        semantic_search,
+        locate_block,
+        match_fund,
+        tract_context,
+        submit_brief,
+        equity_audit,
+        add_equity_note,
+    ]
+    before_tool_callback = None
+    if config.ENABLE_BQ_MCP:
+        from .bq_mcp import bigquery_mcp_toolset, block_audit_columns_before_brief
+
+        tools.append(bigquery_mcp_toolset())
+        before_tool_callback = block_audit_columns_before_brief
+
+    def instruction(_ctx: ReadonlyContext) -> str:
+        """Rebuilt every turn so the model always knows today's date."""
+        return build_system_prompt(config.PROJECT, config.DATASET, _today())
+
+    return Agent(
+        name="navigator",
+        model=config.MODEL,
+        description="Builds a Tenant Stabilization Brief for a San Francisco eviction-defense intake.",
+        instruction=instruction,
+        tools=tools,
+        before_tool_callback=before_tool_callback,
+        after_tool_callback=remember_tool_results,
+    )
+
+
+def _multi_agent() -> Agent:
+    """Coordinator + specialists (see specialists.py). Same name, API, and brief contract."""
+    from .specialists import coordinator_before_tool, specialist_tools
+
+    def instruction(_ctx: ReadonlyContext) -> str:
+        return build_coordinator_prompt(_today())
+
+    return Agent(
+        name="navigator",
+        model=config.MODEL,
+        description="Coordinates specialist agents to build a Tenant Stabilization Brief for a "
+                    "San Francisco eviction-defense intake.",
+        instruction=instruction,
+        # submit_brief / add_equity_note stay here so their responses reach the UI.
+        tools=[resolve_date, match_fund, submit_brief, add_equity_note, *specialist_tools()],
+        before_tool_callback=coordinator_before_tool,
+        after_tool_callback=remember_tool_results,
+    )
+
+
+root_agent = _multi_agent() if config.MULTI_AGENT else _single_agent()

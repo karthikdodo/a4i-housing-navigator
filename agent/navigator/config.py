@@ -30,6 +30,10 @@ COMPLAINTS_TABLE = os.getenv("A4I_COMPLAINTS_TABLE", "complaints_embedded")
 STATUTES_TABLE = os.getenv("A4I_STATUTES_TABLE", "statutes_embedded")
 BULLETINS_TABLE = os.getenv("A4I_BULLETINS_TABLE", "bulletins_embedded")
 
+# Multi-agent mode: a coordinator delegates to specialist agents (specialists.py).
+# Set to "false" to fall back to the original single navigator agent.
+MULTI_AGENT = os.getenv("A4I_MULTI_AGENT", "true").lower() == "true"
+
 # Google-managed BigQuery MCP server (organizer requirement). Set to "false" to run without it.
 ENABLE_BQ_MCP = os.getenv("A4I_ENABLE_BQ_MCP", "true").lower() == "true"
 BQ_MCP_URL = os.getenv("A4I_BQ_MCP_URL", "https://bigquery.googleapis.com/mcp")

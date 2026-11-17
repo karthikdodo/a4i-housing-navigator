@@ -96,6 +96,12 @@ class LiveRunner:
                 elif part.function_response:
                     name = part.function_response.name
                     resp = part.function_response.response or {}
+                    # Multi-agent mode: a specialist's inner tool calls aren't streamed; their raw
+                    # results arrive in the state delta of the coordinator's function_response.
+                    delta = (event.actions.state_delta or {}) if event.actions else {}
+                    for t in delta.get("specialist_trace") or []:
+                        yield AgentEvent("tool", tool=t.get("tool"), args=t.get("args") or {},
+                                         result=t.get("response"))
                     yield AgentEvent("tool", tool=name, args=pending_args.pop(name, {}), result=resp)
                     if name in ("submit_brief", "add_equity_note") and resp.get("status") == "ok":
                         yield AgentEvent("brief", result=resp["brief"])
