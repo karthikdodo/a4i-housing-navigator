@@ -18,12 +18,15 @@ METRO = os.getenv("A4I_METRO", "San Francisco")
 
 MODEL = os.getenv("A4I_MODEL", "gemini-2.5-flash")
 
-# Must be the same model that built the *_embedded tables (Sid used text-embedding-005,
-# 768 dims). A different model gives vectors of a different size or space, and search breaks.
-EMBED_ENDPOINT = os.getenv("A4I_EMBED_ENDPOINT", "text-embedding-005")
+# Must be the same model that built the *_embedded tables: gemini-embedding-2 (3072 dims)
+# through the us.a4i-vertex CLOUD_RESOURCE connection, see sql/0*_embed_*.sql.
+# A different model gives vectors of a different size or space, and search breaks.
+EMBED_ENDPOINT = os.getenv("A4I_EMBED_ENDPOINT", "gemini-embedding-2")
+# Empty string = embed with the caller's credentials instead of the connection.
+EMBED_CONNECTION = os.getenv("A4I_EMBED_CONNECTION", "us.a4i-vertex")
 
 # Embedding tables built by the vector lane (sql/).
-COMPLAINTS_TABLE = os.getenv("A4I_COMPLAINTS_TABLE", "complaint_embeddings")
+COMPLAINTS_TABLE = os.getenv("A4I_COMPLAINTS_TABLE", "complaints_embedded")
 STATUTES_TABLE = os.getenv("A4I_STATUTES_TABLE", "statutes_embedded")
 BULLETINS_TABLE = os.getenv("A4I_BULLETINS_TABLE", "bulletins_embedded")
 

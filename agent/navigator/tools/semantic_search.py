@@ -69,6 +69,10 @@ def exclusion_reason(row: dict) -> Optional[str]:
     return None
 
 
+def _connection_arg() -> str:
+    return f"connection_id => '{config.EMBED_CONNECTION}', " if config.EMBED_CONNECTION else ""
+
+
 def _vector_search(corpus: str, query: str, top_k: int, block_like: Optional[str]) -> list[dict]:
     tbl, select = _CORPORA[corpus]
     where = "metro_area = @metro"
@@ -85,7 +89,7 @@ def _vector_search(corpus: str, query: str, top_k: int, block_like: Optional[str
     FROM VECTOR_SEARCH(
       (SELECT * FROM {config.table(tbl)} WHERE {where}),
       'embedding',
-      (SELECT AI.EMBED(@query, endpoint => '{config.EMBED_ENDPOINT}').result AS query_vec),
+      (SELECT AI.EMBED(@query, {_connection_arg()}endpoint => '{config.EMBED_ENDPOINT}').result AS query_vec),
       query_column_to_search => 'query_vec',
       top_k => {int(top_k)},
       distance_type => 'COSINE',
