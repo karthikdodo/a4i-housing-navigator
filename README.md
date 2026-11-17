@@ -14,6 +14,7 @@ A legal-aid paralegal chats with our agent about a tenant facing a nonpayment he
 
 > New here? Read in this order: this page → [`docs/TEAM_PLAN.md`](docs/TEAM_PLAN.md) (who does what, when) → [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (how the parts talk) → the README in your own folder.
 > The original challenge brief is in [`docs/CHALLENGE.md`](docs/CHALLENGE.md).
+> **Running the app, who it is for, and diagrams of the A2UI workspace:** [`docs/A2UI_ARCHITECTURE.md`](docs/A2UI_ARCHITECTURE.md). Quick start: `./start.sh` (demo) or `./start.sh live`, then open http://localhost:5173; `./stop.sh` to stop.
 
 ---
 
