@@ -25,3 +25,6 @@ Thumbs.db
 *.parquet
 !data/*.parquet
 *.csv.gz
+
+# ADK local dev sessions (adk web)
+.adk/
