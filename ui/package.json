@@ -1,0 +1,34 @@
+{
+  "name": "a4i-navigator-ui",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "validate:a2ui": "tsx scripts/validate-a2ui.ts",
+    "catalog:export": "tsx scripts/export-catalog.ts"
+  },
+  "dependencies": {
+    "@a2ui/react": "0.15.0",
+    "@a2ui/web_core": "0.15.0",
+    "dompurify": "^3.4.18",
+    "markdown-it": "^15.0.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "jsdom": "^27.4.0",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.6"
+  }
+}

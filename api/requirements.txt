@@ -1,0 +1,9 @@
+# API server. The agent's own dependencies are in agent/requirements.txt (needed for live mode).
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+# tests + demo fixture rebuild
+pytest>=8
+httpx>=0.27
+pandas>=2.2
+pyarrow>=16
