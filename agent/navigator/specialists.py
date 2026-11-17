@@ -19,7 +19,7 @@ conversation and calls a specialist like a tool. Two ADK behaviours this design 
 from google.adk.agents import Agent
 from google.adk.tools.agent_tool import AgentTool
 
-from . import config
+from . import config, trace
 from .brief import BRIEF, SPECIALIST_TRACE, remember_tool_results
 from .prompts import EQUITY_PROMPT, EVIDENCE_PROMPT, _fill, build_data_analyst_prompt
 from .tools import equity_audit, locate_block, semantic_search, tract_context
@@ -40,7 +40,8 @@ def evidence_researcher() -> Agent:
         ),
         instruction=_fill(EVIDENCE_PROMPT),
         tools=[semantic_search, locate_block, tract_context],
-        after_tool_callback=remember_tool_results,
+        before_tool_callback=trace.before_tool,
+        after_tool_callback=[remember_tool_results, trace.after_tool],
     )
 
 
@@ -54,7 +55,8 @@ def equity_auditor() -> Agent:
         ),
         instruction=_fill(EQUITY_PROMPT),
         tools=[equity_audit],
-        after_tool_callback=remember_tool_results,
+        before_tool_callback=trace.before_tool,
+        after_tool_callback=[remember_tool_results, trace.after_tool],
     )
 
 
@@ -70,7 +72,8 @@ def data_analyst() -> Agent:
         ),
         instruction=build_data_analyst_prompt(config.PROJECT, config.DATASET),
         tools=[bigquery_mcp_toolset()],
-        before_tool_callback=block_audit_columns_before_brief,
+        before_tool_callback=[trace.before_tool, block_audit_columns_before_brief],
+        after_tool_callback=trace.after_tool,
     )
 
 

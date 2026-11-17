@@ -58,9 +58,23 @@ def remember_tool_results(tool, args: dict, tool_context: ToolContext, tool_resp
             seen = dict(state.get(SEEN_STATUTES, {}))
             seen.update({s["statute_section_id"]: s for s in tool_response.get("matches", [])})
             state[SEEN_STATUTES] = seen
-    elif tool.name in ("match_fund", "tract_context", "equity_audit"):
+    elif tool.name in ("match_fund", "tract_context", "equity_audit", "analyze_photos"):
         state[LAST + tool.name] = tool_response
     return None
+
+
+def _photo_findings(result: Optional[dict]) -> Optional[dict]:
+    """Tenant-photo findings for the brief (from analyze_photos). Never part of `evidence`."""
+    if not result or result.get("error"):
+        return None
+    return {
+        "source": result.get("source"),
+        "photo_count": result.get("photo_count"),
+        "hazard_types": result.get("hazard_types"),
+        "severe_hazards": result.get("severe_hazards"),
+        "photos": [{"photo_id": p.get("photo_id"), "summary": p.get("summary"), "hazards": p.get("hazards")}
+                   for p in result.get("photos") or []],
+    }
 
 
 def submit_brief(
@@ -153,7 +167,9 @@ def submit_brief(
         "funds": fund_result.get("funds", []),
         "tract_context": tract_out,
         "equity_note": (state.get(BRIEF) or {}).get("equity_note"),
-        "cannot_prove": BASE_CANNOT_PROVE + list(extra_cannot_prove or []),
+        "tenant_photos": _photo_findings(state.get(LAST + "analyze_photos")),
+        "cannot_prove": BASE_CANNOT_PROVE + list(extra_cannot_prove or [])
+        + (list((state.get(LAST + "analyze_photos") or {}).get("caveats") or [])),
         "memo_markdown": memo_markdown,
         "stub_tools": stubs,  # non-empty means some sections are placeholder data
     }

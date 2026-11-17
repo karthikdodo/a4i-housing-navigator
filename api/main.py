@@ -52,7 +52,7 @@ ROOT = Path(__file__).resolve().parents[1]
 UI_DIST = Path(os.getenv("A4I_UI_DIST", ROOT / "ui" / "dist"))
 CATALOG_FILE = Path(__file__).parent / "a2ui" / "navigator_catalog.json"
 
-app = FastAPI(title="Tenant Stabilization Navigator API", version="0.2.0")
+app = FastAPI(title="Tenant Voice API", version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("A4I_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(","),
@@ -152,9 +152,13 @@ def get_memo(sid: str, cid: str) -> PlainTextResponse:
     case = get_case(sid, cid)
     if not case["memo"]["markdown"]:
         raise HTTPException(404, "No memo yet for this case")
-    return PlainTextResponse(
-        case["memo"]["markdown"], media_type="text/markdown",
-        headers={"Content-Disposition": f'attachment; filename="{cid}-intake-memo.md"'})
+    # Export is never blocked: an unreviewed memo downloads/copies with a DRAFT line on top.
+    reviewed = case["memo"]["status"] == "reviewed"
+    from .a2ui.view import DRAFT_STAMP
+    text = case["memo"]["markdown"] if reviewed else DRAFT_STAMP + case["memo"]["markdown"]
+    name = f"{cid}-intake-memo.md" if reviewed else f"{cid}-intake-memo-DRAFT.md"
+    return PlainTextResponse(text, media_type="text/markdown",
+                             headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 class ChatIn(BaseModel):

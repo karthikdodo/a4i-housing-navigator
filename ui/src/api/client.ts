@@ -9,10 +9,27 @@ export type ServerEvent =
   | {type: 'brief'; brief: Record<string, unknown>}
   | {type: 'error'; text: string}
   | {type: 'a2ui'; messages: unknown[]}
-  | {type: 'case'; case_id: string; mode: string; transcript: TranscriptTurn[]}
+  | {type: 'case'; case_id: string; mode: string; transcript: TranscriptTurn[]; trace?: TraceEvent[]}
   | {type: 'user_echo'; text: string}
   | {type: 'user_turn'; turn: TranscriptTurn}
+  | ({type: 'trace'} & TraceEvent)
   | {type: 'turn_end'};
+
+/** One tool call by one agent (coordinator or sub-agent), from agent/navigator/trace.py. */
+export type TraceEvent = {
+  phase: 'start' | 'end';
+  id: string;
+  agent: string;
+  tool: string;
+  kind: 'tool' | 'agent';
+  turn: number;
+  args?: Record<string, unknown>;
+  label?: string;
+  summary?: string;
+  detail?: string | null;
+  ok?: boolean;
+  ms?: number | null;
+};
 
 export type TranscriptTurn = {
   role: 'user' | 'agent' | 'status';

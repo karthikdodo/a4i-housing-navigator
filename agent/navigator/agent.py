@@ -74,10 +74,11 @@ from zoneinfo import ZoneInfo
 from google.adk.agents import Agent
 from google.adk.agents.readonly_context import ReadonlyContext
 
-from . import config
+from . import config, trace
 from .brief import add_equity_note, remember_tool_results, submit_brief
 from .prompts import build_coordinator_prompt, build_system_prompt
 from .tools import (
+    analyze_photos,
     equity_audit,
     locate_block,
     match_fund,
@@ -98,6 +99,7 @@ TOOL_STATUS_TEXT = {
     "equity_audit": "Running the equity audit…",
     "submit_brief": "Writing the Stabilization Brief…",
     "add_equity_note": "Adding the equity note…",
+    "analyze_photos": "Analyzing the tenant's photos (Gemini vision)…",
     "list_table_ids": "Looking up BigQuery tables…",
     "get_table_info": "Reading a table schema…",
     "execute_sql_readonly": "Querying BigQuery…",
@@ -115,6 +117,7 @@ def _today() -> str:
 def _single_agent() -> Agent:
     """Original design: one agent with every tool."""
     tools = [
+        analyze_photos,
         resolve_date,
         semantic_search,
         locate_block,
@@ -124,12 +127,12 @@ def _single_agent() -> Agent:
         equity_audit,
         add_equity_note,
     ]
-    before_tool_callback = None
+    before_tool_callback = [trace.before_tool]
     if config.ENABLE_BQ_MCP:
         from .bq_mcp import bigquery_mcp_toolset, block_audit_columns_before_brief
 
         tools.append(bigquery_mcp_toolset())
-        before_tool_callback = block_audit_columns_before_brief
+        before_tool_callback = [trace.before_tool, block_audit_columns_before_brief]
 
     def instruction(_ctx: ReadonlyContext) -> str:
         """Rebuilt every turn so the model always knows today's date."""
@@ -142,7 +145,7 @@ def _single_agent() -> Agent:
         instruction=instruction,
         tools=tools,
         before_tool_callback=before_tool_callback,
-        after_tool_callback=remember_tool_results,
+        after_tool_callback=[remember_tool_results, trace.after_tool],
     )
 
 
@@ -160,9 +163,9 @@ def _multi_agent() -> Agent:
                     "San Francisco eviction-defense intake.",
         instruction=instruction,
         # submit_brief / add_equity_note stay here so their responses reach the UI.
-        tools=[resolve_date, match_fund, submit_brief, add_equity_note, *specialist_tools()],
-        before_tool_callback=coordinator_before_tool,
-        after_tool_callback=remember_tool_results,
+        tools=[analyze_photos, resolve_date, match_fund, submit_brief, add_equity_note, *specialist_tools()],
+        before_tool_callback=[trace.before_tool, coordinator_before_tool],
+        after_tool_callback=[remember_tool_results, trace.after_tool],
     )
 
 

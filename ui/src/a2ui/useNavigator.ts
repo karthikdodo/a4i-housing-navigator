@@ -9,24 +9,43 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {MessageProcessor, type ActionPayload, type SurfaceModel} from '@a2ui/web_core';
 import type {ReactCatalogComponent} from '@a2ui/react';
 import {navigatorCatalog} from './catalog';
-import {NavigatorSocket, sessionId, type ServerEvent, type TranscriptTurn} from '../api/client';
+import {NavigatorSocket, sessionId, type ServerEvent, type TraceEvent, type TranscriptTurn} from '../api/client';
 import {speak} from '../api/media';
+import {applyTrace, finishRun, newRun, type Run} from '../AgentRun';
 
 export type Attachment = {id: string; url: string; kind: string; name?: string};
 export type VoiceClip = {id: string; url: string; duration: number; source?: string};
 export type ChatItem = {
   id: number;
-  role: 'user' | 'agent' | 'status';
+  role: 'user' | 'agent' | 'status' | 'run';
   text: string;
   tool?: string | null;
   streaming?: boolean;
   attachments?: Attachment[];
   voice?: VoiceClip | null;
+  run?: Run; // role 'run': the live agent/tool trace for one turn
 };
 
 const toItem = (t: TranscriptTurn): ChatItem => ({
   id: nextId++, role: t.role, text: t.text, tool: t.tool, attachments: t.attachments ?? [], voice: t.voice ?? null,
 });
+
+/** Chat items for a replayed case: transcript turns, with each turn's agent run after its user message. */
+function rebuildChat(transcript: TranscriptTurn[], trace: TraceEvent[]): ChatItem[] {
+  const byTurn = new Map<number, Run>();
+  for (const ev of trace) byTurn.set(ev.turn, applyTrace(byTurn.get(ev.turn) ?? newRun(ev.turn), ev));
+  const out: ChatItem[] = [];
+  let turn = 0;
+  for (const t of transcript) {
+    out.push(toItem(t));
+    if (t.role === 'user') {
+      turn++;
+      const run = byTurn.get(turn);
+      if (run) out.push({id: nextId++, role: 'run', text: '', run: finishRun(run)});
+    }
+  }
+  return out;
+}
 
 // Actions the browser handles itself (they change only this screen).
 const LOCAL = new Set(['open_brief', 'close_brief', 'print_brief', 'copy_memo', 'open_intake_form', 'close_intake_form']);
@@ -140,7 +159,7 @@ export function useNavigator() {
       case 'case':
         setCaseId(e.case_id);
         setMode(e.mode);
-        setChat(e.transcript.map(toItem));
+        setChat(rebuildChat(e.transcript, e.trace ?? []));
         break;
       case 'user_echo':
         setBusy(true); // the user_turn that follows carries the bubble
@@ -152,6 +171,23 @@ export function useNavigator() {
       case 'status':
         setChat(c => [...c, {id: nextId++, role: 'status', text: e.text, tool: e.tool}]);
         break;
+      case 'trace': {
+        const ev = e as TraceEvent;
+        setChat(c => {
+          for (let i = c.length - 1; i >= 0; i--) {
+            const it = c[i];
+            if (it.role === 'run' && it.run && it.run.turn === ev.turn && it.run.endedAt === null) {
+              const next = [...c];
+              next[i] = {...it, run: applyTrace(it.run, ev)};
+              return next;
+            }
+            if (it.role === 'user') break;
+          }
+          // First call of this turn: the run card goes right after the user's message.
+          return [...c, {id: nextId++, role: 'run', text: '', run: applyTrace(newRun(ev.turn), ev)}];
+        });
+        break;
+      }
       case 'message':
         setChat(c => {
           const last = c[c.length - 1];
@@ -169,7 +205,7 @@ export function useNavigator() {
         break;
       case 'turn_end':
         setBusy(false);
-        setChat(c => c.map(m => (m.streaming ? {...m, streaming: false} : m)));
+        setChat(c => c.map(m => (m.streaming ? {...m, streaming: false} : m.role === 'run' && m.run && m.run.endedAt === null ? {...m, run: finishRun(m.run)} : m)));
         break;
       case 'brief':
         break; // surfaces already carry it; kept for clients that only want the JSON
@@ -204,8 +240,10 @@ export function useNavigator() {
     });
   }, []);
 
+  const lastRun = useMemo(() => [...chat].reverse().find(m => m.role === 'run')?.run ?? null, [chat]);
+
   return useMemo(
-    () => ({surfaces, chat, busy, connection, mode, caseId, overlay, setOverlay, toast, flash, errors, ask, focusRecord, applyA2ui, readAloud, setReadAloud, sid}),
-    [surfaces, chat, busy, connection, mode, caseId, overlay, toast, flash, errors, ask, focusRecord, applyA2ui, readAloud, setReadAloud, sid],
+    () => ({surfaces, chat, busy, connection, mode, caseId, overlay, setOverlay, toast, flash, errors, ask, focusRecord, applyA2ui, readAloud, setReadAloud, sid, lastRun}),
+    [surfaces, chat, busy, connection, mode, caseId, overlay, toast, flash, errors, ask, focusRecord, applyA2ui, readAloud, setReadAloud, sid, lastRun],
   );
 }

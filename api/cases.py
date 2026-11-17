@@ -58,6 +58,7 @@ class CaseState:
     census_tract_geoid: Optional[str] = None
     opened_at: datetime = field(default_factory=now)
     queue_status: str = "Not yet searched"
+    cited_count: int = 0  # records the latest brief cites (queue label)
     queue_status_tone: str = "neutral"
     flag: str = ""
 
@@ -70,8 +71,10 @@ class CaseState:
     equity: Optional[dict] = None
     brief: Optional[dict] = None
     photos: list[dict] = field(default_factory=list)  # tenant-provided, not a public record
+    photo_query: str = ""  # analyze_photos' 311-style description of what the photos show
     tools_run: set[str] = field(default_factory=set)
     stub_tools: set[str] = field(default_factory=set)
+    trace: list[dict] = field(default_factory=list)  # live agent/tool trace events, tagged by turn
 
     memo_status: str = "draft"  # draft | reviewed
     memo_markdown: str = ""
@@ -135,6 +138,20 @@ class CaseState:
             if response.get("census_tract_geoid"):
                 self.census_tract_geoid = str(response["census_tract_geoid"])
             changed.append("tract")
+        elif name == "analyze_photos":
+            # Gemini vision findings, attached to the tenant's photos (still not 311 evidence).
+            by_id = {p.get("photo_id"): p for p in response.get("photos") or []}
+            for ph in self.photos:
+                found = by_id.get(ph.get("id"))
+                if found:
+                    ph["caption"] = found.get("summary", "")
+                    ph["hazards"] = [
+                        {k: h.get(k) for k in ("type", "severity", "where", "confidence", "visible_evidence")}
+                        for h in found.get("hazards") or []]
+                    ph["people_visible"] = bool(found.get("people_or_personal_info_visible"))
+                    ph["analyzed"] = True
+            self.photo_query = response.get("suggested_311_query", "")
+            changed.append("evidence")
         elif name == "equity_audit":
             self.equity = dict(response)
             changed.append("brief")
@@ -178,9 +195,17 @@ class CaseState:
                 self.statutes[sid] = {**self.statutes[sid], **{k: v for k, v in s.items() if v}}
         self.stub_tools.update(brief.get("stub_tools") or [])
         if self.matches or brief.get("evidence"):
-            n = len(brief.get("evidence") or [])
-            self.queue_status = f"Brief ready · {n} record{'s' if n != 1 else ''} cited" if n else "Brief ready · no open record on block"
-            self.queue_status_tone = "eligible" if n else "excluded"
+            self.cited_count = len(brief.get("evidence") or [])
+            self.refresh_queue_status()
+
+    def refresh_queue_status(self) -> None:
+        """Queue label after a brief: the memo's review state first, then what the brief cites."""
+        n = self.cited_count
+        cited = f"{n} record{'s' if n != 1 else ''} cited" if n else "no open record on block"
+        if self.memo_status == "reviewed":
+            self.queue_status, self.queue_status_tone = f"Ready for attorney · {cited}", "eligible"
+        else:
+            self.queue_status, self.queue_status_tone = f"Needs review · {cited}", "excluded"
 
     # ------------------------------------------------------------------ derived
     @property

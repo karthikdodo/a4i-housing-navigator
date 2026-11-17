@@ -18,6 +18,22 @@ from ..cases import TZ, CaseState, now
 # --------------------------------------------------------------------------- formatting
 
 
+
+
+DRAFT_STAMP = ("> **DRAFT – not reviewed by staff.** Written by the navigator agent; a paralegal must review it "
+               "(Mark reviewed) before anyone relies on it.\n\n")
+
+def _photo_hazards(photos: list[dict]) -> str:
+    """'mold (severe), water damage (moderate)': the worst severity per hazard across the tenant's photos."""
+    rank = {"low": 0, "moderate": 1, "severe": 2}
+    worst: dict[str, str] = {}
+    for ph in photos:
+        for h in ph.get("hazards") or []:
+            t, sv = (h.get("type") or "other").replace("_", " "), h.get("severity") or "low"
+            if rank.get(sv, 0) >= rank.get(worst.get(t, "low"), 0):
+                worst[t] = sv
+    return ", ".join(f"{t} ({sv})" for t, sv in sorted(worst.items(), key=lambda x: -rank.get(x[1], 0)))
+
 def _parse_dt(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
@@ -175,37 +191,118 @@ def queue_model(cases: dict[str, CaseState], active_id: Optional[str]) -> dict:
     }
 
 
-STEPS = [
-    ("intake", "Intake"),
-    ("corroborate", "Corroborate 311"),
-    ("match", "Statute & fund match"),
-    ("tract", "Tract & equity check"),
-    ("memo", "Memo for attorney"),
-]
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}{'' if n == 1 else 's'}"
 
 
-def _step_done(c: CaseState) -> dict[str, bool]:
-    return {
-        "intake": bool(c.block_address),
-        "corroborate": bool(c.matches or c.excluded),
-        "match": bool(c.statutes and c.funds),
-        "tract": bool(c.tract and c.tract.get("severe_rent_burden_pct") is not None),
-        "memo": bool(c.memo_markdown),
-    }
+def _stages(c: CaseState) -> list[dict]:
+    """Every stage of the case with what it actually found. state: done | current | todo | skipped | warn."""
+    out: list[dict] = []
+
+    # 1 · Intake
+    facts = [x for x in (
+        c.client_initials or None,
+        f"household {c.household_size}" if c.household_size else None,
+        f"{c.income_pct_ami:g}% AMI" if c.income_pct_ami is not None else None,
+        (c.notice_type.split(" (")[0] + " served") if c.notice_type else None,
+    ) if x]
+    missing = [x for x, ok in (("income", c.income_pct_ami is not None), ("household", bool(c.household_size))) if not ok]
+    out.append({"key": "intake", "label": "Intake", "state": "done" if c.block_address else "current",
+                "detail": " · ".join(facts) or "Block and problems needed",
+                "note": ("Missing: " + ", ".join(missing)) if c.block_address and missing else ""})
+
+    # 2 · Tenant photos (optional)
+    if not c.photos:
+        out.append({"key": "photos", "label": "Tenant photos", "state": "skipped", "detail": "None attached (optional)"})
+    else:
+        analyzed = [p for p in c.photos if p.get("analyzed")]
+        found = _photo_hazards(c.photos)
+        out.append({"key": "photos", "label": "Tenant photos", "state": "done" if analyzed else "current",
+                    "detail": f"{_plural(len(c.photos), 'photo')} · " + (found or "no visible hazard") if analyzed
+                    else f"{_plural(len(c.photos), 'photo')} · not analyzed yet",
+                    "note": "Tenant-provided, not 311 evidence"})
+
+    # 3 · 311 evidence
+    if not (c.matches or c.excluded):
+        out.append({"key": "evidence", "label": "311 evidence", "state": "todo", "detail": "Vector search not run yet"})
+    else:
+        on_block = sum(1 for m in c.matches.values() if m.get("on_tenant_block"))
+        nearby = len(c.matches) - on_block
+        decoys = sum(1 for e in c.excluded.values() if e.get("planted_decoy") or str(e.get("request_id", "")).startswith("DECOY-"))
+        out.append({"key": "evidence", "label": "311 evidence", "state": "done" if on_block else "warn",
+                    "detail": f"{on_block} on block · {nearby} nearby · {len(c.excluded)} excluded ({decoys} decoys)",
+                    "note": "" if on_block else "No open case on the tenant's block"})
+
+    # 4 · Statutes
+    if c.statutes:
+        first = next(iter(c.statutes.values()))
+        cite = (first.get("code_citation") or "").split(" & ")[0]
+        out.append({"key": "statutes", "label": "Statutes", "state": "done",
+                    "detail": f"{len(c.statutes)} matched · {cite}" if cite else f"{len(c.statutes)} matched"})
+    else:
+        out.append({"key": "statutes", "label": "Statutes", "state": "todo", "detail": "Not matched yet"})
+
+    # 5 · Funds
+    if c.funds:
+        fits: dict[str, int] = {}
+        for f in c.funds:
+            k = f.get("fit") or ("likely" if f.get("eligible") else "not_eligible")
+            fits[k] = fits.get(k, 0) + 1
+        order = ["likely", "eligible", "conditional", "needs_info", "not_eligible"]
+        detail = " · ".join(f"{fits[k]} {k.replace('_', ' ')}" for k in order if k in fits)
+        good = fits.get("likely", 0) + fits.get("eligible", 0)
+        out.append({"key": "funds", "label": "Funds", "state": "done" if good else "warn", "detail": detail,
+                    "note": "" if good else "No program fits yet"})
+    else:
+        out.append({"key": "funds", "label": "Funds", "state": "todo",
+                    "detail": "Needs income % AMI" if c.income_pct_ami is None else "Not checked yet"})
+
+    # 6 · Neighborhood (tract)
+    t = c.tract or {}
+    if t.get("severe_rent_burden_pct") is not None:
+        tp, mp = t.get("severe_rent_burden_pct"), t.get("metro_severe_rent_burden_pct")
+        side = "" if mp is None else (" (higher)" if tp > mp else " (lower)")
+        filings = t.get("annual_filings_modeled")
+        out.append({"key": "tract", "label": "Neighborhood", "state": "done",
+                    "detail": f"{tp}% rent-burdened vs {mp}% metro{side}"
+                    + (f" · {filings} filings/yr" if filings is not None else ""),
+                    "note": "Filings are modeled" if filings is not None else ""})
+    else:
+        out.append({"key": "tract", "label": "Neighborhood",
+                    "state": "todo", "detail": f"Tract {c.census_tract_geoid}" if c.census_tract_geoid else "Tract not located yet"})
+
+    # 7 · Equity audit (post-brief only)
+    if c.equity:
+        out.append({"key": "equity", "label": "Equity audit", "state": "done",
+                    "detail": f"{c.equity.get('selected_tract_count', 1)} tract vs {c.equity.get('metro_tract_count', '?')} metro tracts",
+                    "note": "Run after the brief; never used for ranking"})
+    else:
+        out.append({"key": "equity", "label": "Equity audit", "state": "todo",
+                    "detail": "Runs after the brief" if not c.brief else "Not run"})
+
+    # 8 · Memo & staff review
+    if not c.memo_markdown:
+        out.append({"key": "memo", "label": "Memo & review", "state": "todo", "detail": "Not drafted"})
+    elif c.memo_status == "reviewed":
+        out.append({"key": "memo", "label": "Memo & review", "state": "done", "detail": "Reviewed · ready for attorney"})
+    else:
+        out.append({"key": "memo", "label": "Memo & review", "state": "warn", "detail": "Draft · needs staff review",
+                    "note": "Exports carry a DRAFT line"})
+
+    # The first unfinished, non-optional stage is "current".
+    if not any(s["state"] == "current" for s in out):
+        for s in out:
+            if s["state"] == "todo":
+                s["state"] = "current"
+                break
+    for i, s in enumerate(out, 1):
+        s["n"] = i
+    return out
 
 
 def header_model(c: CaseState) -> dict:
     left, hours = countdown(c.hearing_datetime)
-    done = _step_done(c)
-    steps, current_set = [], False
-    for key, label in STEPS:
-        if done[key]:
-            state = "done"
-        elif not current_set:
-            state, current_set = "current", True
-        else:
-            state = "todo"
-        steps.append({"label": label, "state": state})
+    steps = _stages(c)
     if hours is None:
         detail = "Confirm the hearing date with the client"
     elif hours <= 72:
@@ -377,9 +474,13 @@ def documents_model(c: CaseState) -> dict:
         "excluded": ex,
         "excluded_title": f"Excluded by filter ({len(ex)}): why they can't be used" if searched else "",
         "excluded_open": bool(ex),
-        "photos": [{"url": ph["url"], "name": ph.get("name", "photo"), "caption": ph.get("caption", "")} for ph in c.photos],
-        "photos_title": f"Tenant-provided photos ({len(c.photos)})" if c.photos else "",
-        "photos_note": "From the tenant, not a public record: attach to the DBI complaint and the attorney packet." if c.photos else "",
+        "photos": [{"url": ph["url"], "name": ph.get("name", "photo"), "caption": ph.get("caption", ""),
+                    "hazards": ph.get("hazards") or [], "analyzed": bool(ph.get("analyzed")),
+                    "people_visible": bool(ph.get("people_visible"))} for ph in c.photos],
+        "photos_title": (f"Tenant-provided photos ({len(c.photos)})"
+                         + (" · analyzed by Gemini vision" if any(ph.get("analyzed") for ph in c.photos) else "")) if c.photos else "",
+        "photos_note": ("From the tenant, not a public record or an inspection finding, and no proof of when or where they "
+                        "were taken. Attach them to the DBI complaint and the attorney packet.") if c.photos else "",
         "boundary_note": ("**What the public record cannot prove:** 311 rows are redacted to the 100-block. They show the building has "
                           "open hazards, not that *her unit* is cited. Ask for photos, texts to the landlord, and her own DBI complaint number."),
         "statutes": st,
@@ -407,7 +508,10 @@ def suggestions_model(c: CaseState) -> dict:
 
 
 def default_suggestions(c: CaseState) -> list[str]:
-    done = _step_done(c)
+    done = {
+        "corroborate": bool(c.matches or c.excluded),
+        "tract": bool(c.tract and c.tract.get("severe_rent_burden_pct") is not None),
+    }
     if not done["corroborate"]:
         return ["Any open residential complaints on her block?"]
     out = []
@@ -461,10 +565,12 @@ def brief_model(c: CaseState) -> dict:
         "tract_rows": tract_rows,
         "equity_rows": equity_rows,
         "equity_note": b.get("equity_note") or ("Equity audit not run yet." if not eq else eq.get("baseline", "")),
-        "photos_line": (f"**Tenant-provided photos:** {len(c.photos)} attached in the case file. They show what the tenant "
-                        "photographed; they are not a public record or an inspection finding.") if c.photos else "",
+        "photos_line": (f"**Tenant-provided photos:** {len(c.photos)} attached in the case file"
+                        + (f", showing {_photo_hazards(c.photos)}" if _photo_hazards(c.photos) else "")
+                        + ". They show what the tenant photographed; they are not a public record or an inspection finding.") if c.photos else "",
         "cannot_prove": "\n".join(f"- {x}" for x in cannot) or "- 311 records show conditions on the block, not inside this tenant's unit",
-        "memo": c.memo_markdown,
+        # Unreviewed memos are never blocked from printing, but always carry the draft line.
+        "memo": (DRAFT_STAMP + c.memo_markdown) if c.memo_markdown and c.memo_status != "reviewed" else c.memo_markdown,
         "memo_status": doc["memo"]["status_label"],
         "sources": "Sources: SF 311 (public, 100-block) · ACS 5-Year · statute & bulletin text (public) · court filings (modeled)",
         "signoff": "Reviewed by: ____________ · Date: ______",
