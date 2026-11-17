@@ -40,7 +40,7 @@ agent/navigator/
 
 ## How it works
 
-1. `semantic_search` runs real BigQuery Vector Search (`text-embedding-005`, cosine, brute force) over Sid's `complaint_embeddings`, `statutes_embedded`, `bulletins_embedded`. For complaints it runs a second search limited to the tenant's block, so on-block cases always surface, flagged `on_tenant_block`.
+1. `semantic_search` runs real BigQuery Vector Search (`gemini-embedding-2` via `us.a4i-vertex`, cosine, brute force) over `complaints_embedded`, `statutes_embedded`, `bulletins_embedded` (built by `sql/01`–`03_embed_*.sql`). For complaints it runs a second search limited to the tenant's block, so on-block cases always surface, flagged `on_tenant_block`.
 2. Every complaint hit goes through the decoy filter in code (commercial → no violation → closed). Hits come back as `matches` or `excluded` with a reason.
 3. An `after_tool_callback` stores every tool result in session state.
 4. `submit_brief` builds the brief JSON **from those stored rows by ID**. It rejects excluded or unknown IDs, so the model can't cite a decoy or make up a record.
