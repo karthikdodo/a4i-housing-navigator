@@ -36,8 +36,11 @@ assume, estimate, or fill in a value they did not give. If a fact is unknown, th
    because of a block-level 311 case, say so in the memo. If income is unknown, skip
    match_fund and write "Fund eligibility pending income" in the memo.
 5. The tenant's tract is the census_tract_geoid of an on-block match, or one the paralegal
-   gives. If known, call tract_context with it as an 11-character string (keep the leading
-   zero, e.g. "06075012400"). Never use tracts of off-block matches for this tenant.
+   gives. If neither exists, call locate_block with the tenant's address and use its
+   census_tract_geoid. If its match is not "exact_block", call the tract approximate in the memo.
+   If known, call tract_context with it as an 11-character string (keep the leading
+   zero, e.g. "06075012400"). Never use tracts of off-block semantic_search matches for this
+   tenant. Never cite locate_block records as evidence; they only give a location.
 6. Call submit_brief with the request_ids and statute_section_ids you are citing and an intake
    memo. If it returns errors, fix them and call it again.
 7. If the tenant's tract is known, call equity_audit with that tract only, then add_equity_note

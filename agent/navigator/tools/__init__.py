@@ -89,6 +89,7 @@ without a restart (start a new session after each change).
 import importlib
 import logging
 
+from .locate_block import locate_block
 from .resolve_date import resolve_date
 from .semantic_search import semantic_search
 
@@ -110,4 +111,4 @@ match_fund = _load("match_fund")
 tract_context = _load("tract_context")
 equity_audit = _load("equity_audit")
 
-__all__ = ["resolve_date", "semantic_search", "match_fund", "tract_context", "equity_audit"]
+__all__ = ["resolve_date", "semantic_search", "locate_block", "match_fund", "tract_context", "equity_audit"]
