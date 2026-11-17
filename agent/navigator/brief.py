@@ -67,9 +67,9 @@ def submit_brief(
     block_address: str,
     hazards: list[str],
     evidence_request_ids: list[str],
-    statute_ids: list[str],
     memo_markdown: str,
     tool_context: ToolContext,
+    statute_ids: Optional[list[str]] = None,
     hearing_date: Optional[str] = None,
     household_size: Optional[int] = None,
     income_pct_ami: Optional[float] = None,
@@ -92,6 +92,7 @@ def submit_brief(
         extra_cannot_prove: Case-specific limits of the evidence, beyond the standard caveats.
     """
     state = tool_context.state
+    statute_ids = list(statute_ids or [])
     if state.get(AWAITING_ANSWER) == tool_context.invocation_id:
         return {"status": "error", "errors": [
             "The hearing date is ambiguous or in the past. Ask the paralegal to confirm it and "

@@ -84,6 +84,7 @@ class LiveRunner:
             user_id=user_id, session_id=session_id, new_message=message,
             run_config=self._RunConfig(streaming_mode=self._StreamingMode.SSE),
         ):
+            trace_replayed = False  # replay specialist_trace once per event, not once per part
             for part in (event.content.parts if event.content else []) or []:
                 if part.text and not getattr(part, "thought", False):
                     yield AgentEvent("message", text=part.text, final=not event.partial)
@@ -98,10 +99,14 @@ class LiveRunner:
                     resp = part.function_response.response or {}
                     # Multi-agent mode: a specialist's inner tool calls aren't streamed; their raw
                     # results arrive in the state delta of the coordinator's function_response.
+                    # Parallel calls put several function_responses in ONE event that shares one
+                    # state_delta, so replaying per part would duplicate the specialist's results.
                     delta = (event.actions.state_delta or {}) if event.actions else {}
-                    for t in delta.get("specialist_trace") or []:
-                        yield AgentEvent("tool", tool=t.get("tool"), args=t.get("args") or {},
-                                         result=t.get("response"))
+                    if not trace_replayed:
+                        trace_replayed = True
+                        for t in delta.get("specialist_trace") or []:
+                            yield AgentEvent("tool", tool=t.get("tool"), args=t.get("args") or {},
+                                             result=t.get("response"))
                     yield AgentEvent("tool", tool=name, args=pending_args.pop(name, {}), result=resp)
                     if name in ("submit_brief", "add_equity_note") and resp.get("status") == "ok":
                         yield AgentEvent("brief", result=resp["brief"])

@@ -30,17 +30,27 @@ assume, estimate, or fill in a value they did not give. If a fact is unknown, th
    two or three lines what the search found, ask for all the missing facts in ONE short
    question, and END YOUR TURN. Do not call match_fund or submit_brief until they answer.
    If they say a fact is unknown, continue without it.
-4. Call match_fund only when income % AMI and household size are known. Set
-   has_open_habitability_case to true only if a usable match is an open residential case on
-   the tenant's block, or the paralegal says the building has an open DBI case. If true only
-   because of a block-level 311 case, say so in the memo. If income is unknown, skip
-   match_fund and write "Fund eligibility pending income" in the memo.
+4. Call match_fund only when income % AMI and household size are known. Map the paralegal's
+   facts to its arguments; never infer them from 311 records:
+   - has_open_habitability_case / has_qualifying_unit_dbi_notice: true only if the paralegal
+     says the tenant has their OWN open DBI case or notice. A block-level 311 match is NOT the
+     tenant's case: pass false, and list "file a DBI complaint for the unit" as the step that
+     unlocks the habitability-linked funds.
+   - has_unlawful_detainer_case: true if they mention an eviction / unlawful detainer /
+     nonpayment hearing or case. Otherwise omit it.
+   - has_medical_leave_or_wage_loss: true or false only if stated. Otherwise omit it.
+   Report each fund by its `fit` (eligible, conditional, not_eligible) with its `why` and
+   `missing_inputs`. If income is unknown, skip match_fund and write "Fund eligibility pending
+   income" in the memo.
 5. The tenant's tract is the census_tract_geoid of an on-block match, or one the paralegal
    gives. If neither exists, call locate_block with the tenant's address and use its
    census_tract_geoid. If its match is not "exact_block", call the tract approximate in the memo.
    If known, call tract_context with it as an 11-character string (keep the leading
    zero, e.g. "06075012400"). Never use tracts of off-block semantic_search matches for this
    tenant. Never cite locate_block records as evidence; they only give a location.
+   Describe tract numbers by comparing them: severe_rent_burden_pct ABOVE the metro figure is
+   "higher than the San Francisco average", BELOW it is "lower". State both numbers. Never
+   call a below-average figure high or significant. Filings are modeled.
 6. Call submit_brief with the request_ids and statute_section_ids you are citing and an intake
    memo. If it returns errors, fix them and call it again.
 7. If the tenant's tract is known, call equity_audit with that tract only, then add_equity_note
@@ -153,11 +163,18 @@ assume, estimate, or fill in a value they did not give. If a fact is unknown, th
    paralegal in two or three lines what the research found, ask for all the missing facts in
    ONE short question, and END YOUR TURN. Do not call match_fund or submit_brief until they
    answer. If they say a fact is unknown, continue without it.
-4. Call match_fund only when income % AMI and household size are known. Set
-   has_open_habitability_case to true only if the researcher reported an open residential case
-   ON the tenant's block, or the paralegal says the building has an open DBI case. If true only
-   because of a block-level 311 case, say so in the memo. If income is unknown, skip
-   match_fund and write "Fund eligibility pending income" in the memo.
+4. Call match_fund only when income % AMI and household size are known. Map the paralegal's
+   facts to its arguments; never infer them from 311 records:
+   - has_open_habitability_case / has_qualifying_unit_dbi_notice: true only if the paralegal
+     says the tenant has their OWN open DBI case or notice. An open case on the tenant's block
+     (as the researcher reports it) is NOT the tenant's case: pass false, and list "file a DBI
+     complaint for the unit" as the step that unlocks the habitability-linked funds.
+   - has_unlawful_detainer_case: true if they mention an eviction / unlawful detainer /
+     nonpayment hearing or case. Otherwise omit it.
+   - has_medical_leave_or_wage_loss: true or false only if stated. Otherwise omit it.
+   Report each fund by its `fit` (likely, conditional, not_eligible) with its `why` and
+   `missing_inputs`. If income is unknown, skip match_fund and write "Fund eligibility pending
+   income" in the memo.
 5. Call submit_brief with the request_ids and statute_section_ids the researcher reported as
    citable, and an intake memo. If it returns errors, fix them and call it again. If the
    researcher reported no on-block match, pass
@@ -225,8 +242,9 @@ EXCLUDED (never cite): one line each: request_id | reason.
 STATUTES (citable): one line each: statute_section_id | code_citation | one-clause protection.
 TENANT TRACT: geoid | source (coordinator / on-block match / locate_block exact /
   locate_block approximate) — or "unknown".
-NEIGHBORHOOD CONTEXT: tract severe rent burden %, metro severe rent burden %, annual modeled
-  filings (say "modeled"). Mark "PLACEHOLDER (stub)" if the result has "stub": true. Omit if
+NEIGHBORHOOD CONTEXT: tract severe rent burden %, metro severe rent burden %, and whether the
+  tract is HIGHER or LOWER than the metro (compare the two numbers; never call a below-metro
+  figure high or significant), annual modeled filings (say "modeled"). Mark "PLACEHOLDER (stub)" if the result has "stub": true. Omit if
   no tract.
 
 Never use demographic or audit_* fields.
