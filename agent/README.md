@@ -16,6 +16,8 @@ gcloud auth application-default login        # the student-…@qwiklabs.net lab 
 .venv/bin/adk web agent/                     # open http://localhost:8000, pick "navigator"
 ```
 
+**Testing from the Google Cloud Console (Cloud Shell, no local install):** see [`docs/TESTING_IN_CLOUD_CONSOLE.md`](../docs/TESTING_IN_CLOUD_CONSOLE.md).
+
 No `.env` needed: defaults in [`navigator/config.py`](navigator/config.py) point at the lab project. Override with env vars (`A4I_MODEL`, `A4I_ENABLE_BQ_MCP=false`, …).
 
 Try: *"Tenant on the 100 block of Turk St, no heat for two weeks and black mold. Hearing 2026-11-23. Household of 3, 45% AMI."* Then ask *"Why didn't you use DECOY-SANF-05?"*

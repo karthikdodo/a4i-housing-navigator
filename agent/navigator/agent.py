@@ -77,12 +77,20 @@ from google.adk.agents.readonly_context import ReadonlyContext
 from . import config
 from .brief import add_equity_note, remember_tool_results, submit_brief
 from .prompts import build_system_prompt
-from .tools import equity_audit, match_fund, resolve_date, semantic_search, tract_context
+from .tools import (
+    equity_audit,
+    locate_block,
+    match_fund,
+    resolve_date,
+    semantic_search,
+    tract_context,
+)
 
 # Status line the UI shows while each tool runs (api/ sends it as a `status` event).
 TOOL_STATUS_TEXT = {
     "resolve_date": "Working out the date…",
     "semantic_search": "Searching 311 records, statutes, and funds…",
+    "locate_block": "Finding the tenant's census tract…",
     "match_fund": "Checking emergency fund eligibility…",
     "tract_context": "Pulling neighborhood context…",
     "equity_audit": "Running the equity audit…",
@@ -96,6 +104,7 @@ TOOL_STATUS_TEXT = {
 tools = [
     resolve_date,
     semantic_search,
+    locate_block,
     match_fund,
     tract_context,
     submit_brief,
